@@ -20,23 +20,18 @@
       "dest": "/public/static/$1"
     },
     {
-      "src": "/(.*\\.(?:css|js|jpg|jpeg|png|gif|ico|svg|webp|woff|woff2|ttf|eot))",
-      "dest": "/public/$1"
-    },
-    {
       "src": "/(.*)",
       "dest": "/public/index.html"
     }
   ],
-  "env": [
-    "PORT",
-    "TURSO_DATABASE_URL",
-    "TURSO_AUTH_TOKEN",
-    "JWT_SECRET",
-    "PAYMENT_GATEWAY_KEY",
-    "NODE_ENV"
-  ],
-  "regions": [
-    "sin1"
-  ]
+  "env": {
+    "PORT": "3000",
+    "NODE_ENV": "production"
+  },
+  "functions": {
+    "src/app.js": {
+      "memory": 1024,
+      "maxDuration": 30
+    }
+  }
 }
