@@ -5,578 +5,454 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - Aplikasi Laundry Enterprise</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
-            --accent-from: #6366F1;
-            --accent-to: #06B6D4;
-        }
-        
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            --accent-from: #3B82F6;
+            --accent-to: #10B981;
         }
         
         .gradient-bg {
             background: linear-gradient(135deg, var(--accent-from), var(--accent-to));
         }
         
+        .gradient-text {
+            background: linear-gradient(135deg, var(--accent-from), var(--accent-to));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
         .glass {
-            background: rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.95);
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.2);
         }
         
-        .login-container {
-            width: 100%;
-            max-width: 450px;
-            padding: 24px;
-        }
-        
-        .logo-section {
-            text-align: center;
-            margin-bottom: 40px;
-        }
-        
-        .logo-icon {
-            width: 80px;
-            height: 80px;
-            margin: 0 auto 20px;
-            background: linear-gradient(135deg, var(--accent-from), var(--accent-to));
-            border-radius: 16px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 40px;
-            font-weight: bold;
-            color: white;
-            box-shadow: 0 10px 30px rgba(99, 102, 241, 0.3);
-        }
-        
-        .logo-section h1 {
-            color: white;
-            font-size: 28px;
-            font-weight: 700;
-            margin-bottom: 8px;
-        }
-        
-        .logo-section p {
-            color: #cbd5e1;
-            font-size: 14px;
-        }
-        
-        .login-form {
-            background: rgba(30, 41, 59, 0.8);
-            border: 1px solid rgba(99, 102, 241, 0.2);
-            border-radius: 16px;
-            padding: 32px;
-            backdrop-filter: blur(10px);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-        }
-        
-        .form-group {
-            margin-bottom: 24px;
-        }
-        
-        .form-group label {
-            display: block;
-            color: #e2e8f0;
-            font-size: 14px;
-            font-weight: 600;
-            margin-bottom: 8px;
-        }
-        
-        .form-group input {
-            width: 100%;
-            padding: 12px 16px;
-            background: rgba(15, 23, 42, 0.5);
-            border: 1px solid rgba(99, 102, 241, 0.3);
-            border-radius: 8px;
-            color: white;
-            font-size: 14px;
+        .input-focus {
             transition: all 0.3s ease;
         }
         
-        .form-group input::placeholder {
-            color: #94a3b8;
-        }
-        
-        .form-group input:focus {
-            outline: none;
-            background: rgba(15, 23, 42, 0.8);
+        .input-focus:focus {
             border-color: var(--accent-from);
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
         }
         
-        .remember-forgot {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 24px;
-            font-size: 14px;
-        }
-        
-        .remember-forgot label {
-            display: flex;
-            align-items: center;
-            color: #cbd5e1;
-            cursor: pointer;
-            margin: 0;
-        }
-        
-        .remember-forgot input[type="checkbox"] {
-            width: 18px;
-            height: 18px;
-            margin-right: 8px;
-            cursor: pointer;
-            accent-color: var(--accent-from);
-        }
-        
-        .remember-forgot a {
-            color: var(--accent-from);
-            text-decoration: none;
-            transition: color 0.3s;
-        }
-        
-        .remember-forgot a:hover {
-            color: var(--accent-to);
-        }
-        
-        .btn-login {
-            width: 100%;
-            padding: 12px 24px;
+        .btn-gradient {
             background: linear-gradient(135deg, var(--accent-from), var(--accent-to));
-            color: white;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
             transition: all 0.3s ease;
-            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
         }
         
-        .btn-login:hover {
+        .btn-gradient:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6);
+            box-shadow: 0 10px 25px rgba(59, 130, 246, 0.3);
         }
         
-        .btn-login:active {
+        .btn-gradient:active {
             transform: translateY(0);
         }
         
-        .btn-login:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
+        .checkbox-custom {
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #3B82F6;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .checkbox-custom:checked {
+            background: linear-gradient(135deg, var(--accent-from), var(--accent-to));
+            border-color: var(--accent-to);
+        }
+        
+        .checkbox-custom:checked::after {
+            content: '✓';
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            height: 100%;
+            font-size: 14px;
+            font-weight: bold;
         }
         
         .error-message {
-            background: rgba(239, 68, 68, 0.1);
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            color: #fca5a5;
-            padding: 12px 16px;
-            border-radius: 8px;
-            font-size: 14px;
-            margin-bottom: 20px;
             display: none;
+            animation: slideIn 0.3s ease;
         }
         
         .error-message.show {
             display: block;
         }
         
-        .success-message {
-            background: rgba(34, 197, 94, 0.1);
-            border: 1px solid rgba(34, 197, 94, 0.3);
-            color: #86efac;
-            padding: 12px 16px;
-            border-radius: 8px;
-            font-size: 14px;
-            margin-bottom: 20px;
-            display: none;
-        }
-        
-        .success-message.show {
-            display: block;
-        }
-        
-        .signup-link {
-            text-align: center;
-            margin-top: 20px;
-            color: #cbd5e1;
-            font-size: 14px;
-        }
-        
-        .signup-link a {
-            color: var(--accent-from);
-            text-decoration: none;
-            font-weight: 600;
-            transition: color 0.3s;
-        }
-        
-        .signup-link a:hover {
-            color: var(--accent-to);
-        }
-        
-        .demo-credentials {
-            background: rgba(6, 182, 212, 0.1);
-            border: 1px solid rgba(6, 182, 212, 0.3);
-            padding: 16px;
-            border-radius: 8px;
-            margin-top: 24px;
-            font-size: 13px;
-            color: #a5f3fc;
-        }
-        
-        .demo-credentials h4 {
-            margin-bottom: 8px;
-            font-weight: 600;
-            color: var(--accent-to);
-        }
-        
-        .demo-credentials p {
-            margin: 4px 0;
-            color: #cbd5e1;
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
         
         .loading-spinner {
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 2px solid rgba(255, 255, 255, 0.3);
-            border-radius: 50%;
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
             border-top-color: white;
+            border-radius: 50%;
             animation: spin 0.8s linear infinite;
-            margin-right: 8px;
-            vertical-align: middle;
+        }
+        
+        .loading-spinner.show {
+            display: inline-block;
         }
         
         @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
-        
-        .input-icon {
-            position: relative;
-        }
-        
-        .input-icon svg {
-            position: absolute;
-            right: 12px;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 18px;
-            height: 18px;
-            color: #94a3b8;
-            pointer-events: none;
-        }
-        
-        .input-icon input {
-            padding-right: 40px;
-        }
-        
-        @media (max-width: 640px) {
-            .login-container {
-                padding: 16px;
+            to {
+                transform: rotate(360deg);
             }
-            
-            .login-form {
-                padding: 24px;
+        }
+        
+        .password-toggle {
+            cursor: pointer;
+            user-select: none;
+        }
+        
+        .form-container {
+            animation: fadeInUp 0.6s ease;
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
             }
-            
-            .logo-section h1 {
-                font-size: 24px;
-            }
-            
-            .logo-icon {
-                width: 64px;
-                height: 64px;
-                font-size: 32px;
+            to {
+                opacity: 1;
+                transform: translateY(0);
             }
         }
     </style>
 </head>
-<body>
-    <div class="login-container">
-        <!-- Logo Section -->
-        <div class="logo-section">
-            <div class="logo-icon">🧺</div>
-            <h1>Laundry Enterprise</h1>
-            <p>Sistem Manajemen Laundry Modern</p>
+<body class="bg-gray-50">
+    <div class="min-h-screen flex items-center justify-center px-4 py-12">
+        <div class="w-full max-w-md">
+            <!-- Logo Section -->
+            <div class="text-center mb-8">
+                <div class="inline-flex items-center justify-center w-16 h-16 gradient-bg rounded-full mb-4">
+                    <i class="fas fa-soap text-white text-2xl"></i>
+                </div>
+                <h1 class="text-3xl font-bold gradient-text mb-2">Aplikasi Laundry Enterprise</h1>
+                <p class="text-gray-600">Sistem Manajemen Laundry Terintegrasi</p>
+            </div>
+
+            <!-- Login Form Card -->
+            <div class="glass rounded-2xl shadow-xl p-8 form-container">
+                <h2 class="text-2xl font-bold text-gray-800 mb-6 text-center">Masuk Akun</h2>
+
+                <!-- Error Alert -->
+                <div id="errorAlert" class="error-message mb-4 p-4 bg-red-50 border border-red-200 rounded-lg">
+                    <div class="flex items-start">
+                        <i class="fas fa-exclamation-circle text-red-500 mt-0.5 mr-3 flex-shrink-0"></i>
+                        <div>
+                            <h3 class="font-semibold text-red-800">Error</h3>
+                            <p id="errorText" class="text-red-700 text-sm mt-1"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Success Alert -->
+                <div id="successAlert" class="error-message mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <div class="flex items-start">
+                        <i class="fas fa-check-circle text-green-500 mt-0.5 mr-3 flex-shrink-0"></i>
+                        <div>
+                            <h3 class="font-semibold text-green-800">Berhasil</h3>
+                            <p id="successText" class="text-green-700 text-sm mt-1"></p>
+                        </div>
+                    </div>
+                </div>
+
+                <form id="loginForm" class="space-y-4">
+                    <!-- Email Input -->
+                    <div>
+                        <label for="email" class="block text-sm font-semibold text-gray-700 mb-2">
+                            <i class="fas fa-envelope mr-2"></i>Email atau Username
+                        </label>
+                        <input 
+                            type="text" 
+                            id="email" 
+                            name="email"
+                            class="input-focus w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none text-gray-800"
+                            placeholder="Masukkan email atau username"
+                            required
+                            autocomplete="username"
+                        >
+                        <span id="emailError" class="text-red-500 text-sm mt-1 hidden flex items-center">
+                            <i class="fas fa-times-circle mr-1"></i><span id="emailErrorText"></span>
+                        </span>
+                    </div>
+
+                    <!-- Password Input -->
+                    <div>
+                        <label for="password" class="block text-sm font-semibold text-gray-700 mb-2">
+                            <i class="fas fa-lock mr-2"></i>Kata Sandi
+                        </label>
+                        <div class="relative">
+                            <input 
+                                type="password" 
+                                id="password" 
+                                name="password"
+                                class="input-focus w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none text-gray-800 pr-12"
+                                placeholder="Masukkan kata sandi"
+                                required
+                                autocomplete="current-password"
+                            >
+                            <button 
+                                type="button" 
+                                id="togglePassword"
+                                class="password-toggle absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                            >
+                                <i class="fas fa-eye"></i>
+                            </button>
+                        </div>
+                        <span id="passwordError" class="text-red-500 text-sm mt-1 hidden flex items-center">
+                            <i class="fas fa-times-circle mr-1"></i><span id="passwordErrorText"></span>
+                        </span>
+                    </div>
+
+                    <!-- Remember Me & Forgot Password -->
+                    <div class="flex items-center justify-between pt-2">
+                        <label class="flex items-center cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                id="rememberMe" 
+                                name="rememberMe"
+                                class="checkbox-custom mr-2"
+                            >
+                            <span class="text-sm text-gray-600">Ingat saya</span>
+                        </label>
+                        <a href="#" class="text-sm font-semibold gradient-text hover:opacity-80 transition">
+                            Lupa kata sandi?
+                        </a>
+                    </div>
+
+                    <!-- Login Button -->
+                    <button 
+                        type="submit"
+                        id="loginBtn"
+                        class="btn-gradient w-full text-white font-bold py-3 rounded-lg mt-6 flex items-center justify-center"
+                    >
+                        <span id="loginText">Masuk</span>
+                        <div id="loginSpinner" class="loading-spinner ml-2"></div>
+                    </button>
+
+                    <!-- Demo Credentials Info -->
+                    <div class="mt-6 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p class="text-xs text-blue-800 font-semibold mb-2">
+                            <i class="fas fa-info-circle mr-1"></i>Demo Credentials:
+                        </p>
+                        <div class="text-xs text-blue-700 space-y-1">
+                            <p><strong>Email:</strong> admin@laundry.com</p>
+                            <p><strong>Password:</strong> password123</p>
+                        </div>
+                    </div>
+                </form>
+
+                <!-- Divider -->
+                <div class="relative my-6">
+                    <div class="absolute inset-0 flex items-center">
+                        <div class="w-full border-t border-gray-300"></div>
+                    </div>
+                    <div class="relative flex justify-center text-sm">
+                        <span class="px-2 bg-white text-gray-500">atau</span>
+                    </div>
+                </div>
+
+                <!-- Social Login Buttons -->
+                <div class="grid grid-cols-2 gap-3">
+                    <button type="button" class="flex items-center justify-center px-4 py-3 border-2 border-gray-300 rounded-lg hover:border-gray-400 transition text-gray-700 font-semibold">
+                        <i class="fab fa-google mr-2"></i>Google
+                    </button>
+                    <button type="button" class="flex items-center justify-center px-4 py-3 border-2 border-gray-300 rounded-lg hover:border-gray-400 transition text-gray-700 font-semibold">
+                        <i class="fab fa-microsoft mr-2"></i>Microsoft
+                    </button>
+                </div>
+
+                <!-- Sign Up Link -->
+                <p class="text-center text-gray-600 text-sm mt-6">
+                    Belum punya akun? 
+                    <a href="#" class="font-semibold gradient-text hover:opacity-80 transition">
+                        Daftar di sini
+                    </a>
+                </p>
+            </div>
+
+            <!-- Footer -->
+            <div class="mt-8 text-center text-sm text-gray-500">
+                <p class="flex items-center justify-center">
+                    <i class="fas fa-lock mr-2"></i>Koneksi Anda aman dan terenkripsi
+                </p>
+                <p class="mt-2">© 2026 Aplikasi Laundry Enterprise. Semua hak dilindungi.</p>
+            </div>
         </div>
-        
-        <!-- Login Form -->
-        <form class="login-form" id="loginForm">
-            <!-- Error Message -->
-            <div class="error-message" id="errorMessage"></div>
-            
-            <!-- Success Message -->
-            <div class="success-message" id="successMessage"></div>
-            
-            <!-- Email Field -->
-            <div class="form-group">
-                <label for="email">Email atau Username</label>
-                <div class="input-icon">
-                    <input
-                        type="text"
-                        id="email"
-                        name="email"
-                        placeholder="Masukkan email atau username Anda"
-                        required
-                        autocomplete="username"
-                    >
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
-                    </svg>
-                </div>
-            </div>
-            
-            <!-- Password Field -->
-            <div class="form-group">
-                <label for="password">Password</label>
-                <div class="input-icon">
-                    <input
-                        type="password"
-                        id="password"
-                        name="password"
-                        placeholder="Masukkan password Anda"
-                        required
-                        autocomplete="current-password"
-                    >
-                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
-                    </svg>
-                </div>
-            </div>
-            
-            <!-- Remember & Forgot -->
-            <div class="remember-forgot">
-                <label>
-                    <input type="checkbox" id="rememberMe" name="rememberMe">
-                    Ingat saya
-                </label>
-                <a href="#" onclick="event.preventDefault(); handleForgotPassword();">Lupa Password?</a>
-            </div>
-            
-            <!-- Login Button -->
-            <button type="submit" class="btn-login" id="loginBtn">
-                <span id="btnText">Masuk</span>
-            </button>
-            
-            <!-- Demo Credentials -->
-            <div class="demo-credentials">
-                <h4>Demo Credentials</h4>
-                <p><strong>Admin:</strong> admin@laundry.com / admin123</p>
-                <p><strong>Staff:</strong> staff@laundry.com / staff123</p>
-            </div>
-        </form>
     </div>
-    
+
     <script>
-        // Configuration
-        const API_BASE = '/api';
-        const SESSION_KEY = 'laundry_session';
-        const TOKEN_KEY = 'laundry_token';
-        
-        // DOM Elements
+        // Password Toggle
+        const togglePasswordBtn = document.getElementById('togglePassword');
+        const passwordInput = document.getElementById('password');
+
+        togglePasswordBtn.addEventListener('click', () => {
+            const type = passwordInput.type === 'password' ? 'text' : 'password';
+            passwordInput.type = type;
+            togglePasswordBtn.innerHTML = type === 'password' 
+                ? '<i class="fas fa-eye"></i>' 
+                : '<i class="fas fa-eye-slash"></i>';
+        });
+
+        // Form Validation
         const loginForm = document.getElementById('loginForm');
         const emailInput = document.getElementById('email');
-        const passwordInput = document.getElementById('password');
-        const rememberMeCheckbox = document.getElementById('rememberMe');
+        const passwordInput2 = document.getElementById('password');
         const loginBtn = document.getElementById('loginBtn');
-        const btnText = document.getElementById('btnText');
-        const errorMessage = document.getElementById('errorMessage');
-        const successMessage = document.getElementById('successMessage');
-        
-        // Initialize
-        document.addEventListener('DOMContentLoaded', () => {
-            loadRememberedEmail();
-            setupEventListeners();
-            checkExistingSession();
-        });
-        
-        // Setup Event Listeners
-        function setupEventListeners() {
-            loginForm.addEventListener('submit', handleLogin);
-            emailInput.addEventListener('focus', () => clearMessages());
-            passwordInput.addEventListener('focus', () => clearMessages());
+        const errorAlert = document.getElementById('errorAlert');
+        const successAlert = document.getElementById('successAlert');
+        const errorText = document.getElementById('errorText');
+        const successText = document.getElementById('successText');
+        const loginSpinner = document.getElementById('loginSpinner');
+        const loginText = document.getElementById('loginText');
+
+        function showError(message) {
+            errorText.textContent = message;
+            errorAlert.classList.add('show');
+            setTimeout(() => {
+                errorAlert.classList.remove('show');
+            }, 5000);
         }
-        
-        // Check Existing Session
-        function checkExistingSession() {
-            const token = localStorage.getItem(TOKEN_KEY);
-            if (token) {
-                verifyToken(token);
-            }
+
+        function showSuccess(message) {
+            successText.textContent = message;
+            successAlert.classList.add('show');
+            setTimeout(() => {
+                successAlert.classList.remove('show');
+            }, 3000);
         }
-        
-        // Verify Token
-        function verifyToken(token) {
-            fetch(`${API_BASE}/auth/verify`, {
-                method: 'GET',
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success && data.user) {
-                    redirectToDashboard();
-                }
-            })
-            .catch(() => {
-                localStorage.removeItem(TOKEN_KEY);
-            });
+
+        function validateEmail(email) {
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$|^[a-zA-Z0-9_]{3,}$/;
+            return emailRegex.test(email);
         }
-        
-        // Handle Login
-        async function handleLogin(e) {
+
+        function validatePassword(password) {
+            return password.length >= 6;
+        }
+
+        loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            clearMessages();
-            
+
+            // Clear previous errors
+            document.getElementById('emailError').classList.add('hidden');
+            document.getElementById('passwordError').classList.add('hidden');
+
             const email = emailInput.value.trim();
-            const password = passwordInput.value;
-            
-            if (!email || !password) {
-                showError('Email/Username dan Password harus diisi');
-                return;
+            const password = passwordInput2.value;
+            let hasError = false;
+
+            // Validate email
+            if (!email) {
+                document.getElementById('emailError').classList.remove('hidden');
+                document.getElementById('emailErrorText').textContent = 'Email atau username harus diisi';
+                hasError = true;
+            } else if (!validateEmail(email)) {
+                document.getElementById('emailError').classList.remove('hidden');
+                document.getElementById('emailErrorText').textContent = 'Format email atau username tidak valid';
+                hasError = true;
             }
-            
-            setLoading(true);
-            
+
+            // Validate password
+            if (!password) {
+                document.getElementById('passwordError').classList.remove('hidden');
+                document.getElementById('passwordErrorText').textContent = 'Kata sandi harus diisi';
+                hasError = true;
+            } else if (!validatePassword(password)) {
+                document.getElementById('passwordError').classList.remove('hidden');
+                document.getElementById('passwordErrorText').textContent = 'Kata sandi minimal 6 karakter';
+                hasError = true;
+            }
+
+            if (hasError) return;
+
+            // Show loading state
+            loginBtn.disabled = true;
+            loginSpinner.classList.add('show');
+            loginText.textContent = 'Memproses...';
+
             try {
-                const response = await fetch(`${API_BASE}/auth/login`, {
+                const response = await fetch('/api/auth/login', {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        email: email,
-                        password: password,
-                        tenant_id: 'default'
+                        email,
+                        password,
+                        rememberMe: document.getElementById('rememberMe').checked
                     })
                 });
-                
+
                 const data = await response.json();
-                
-                if (!response.ok) {
-                    throw new Error(data.message || 'Login gagal');
-                }
-                
-                if (data.success && data.token) {
-                    localStorage.setItem(TOKEN_KEY, data.token);
-                    
-                    if (data.user) {
-                        localStorage.setItem(SESSION_KEY, JSON.stringify(data.user));
-                    }
-                    
-                    if (rememberMeCheckbox.checked) {
-                        localStorage.setItem('remembered_email', email);
-                    } else {
-                        localStorage.removeItem('remembered_email');
-                    }
-                    
+
+                if (response.ok) {
                     showSuccess('Login berhasil! Mengalihkan...');
                     
+                    // Store token if remember me is checked
+                    if (document.getElementById('rememberMe').checked) {
+                        localStorage.setItem('auth_token', data.token);
+                        localStorage.setItem('user_email', email);
+                    } else {
+                        sessionStorage.setItem('auth_token', data.token);
+                    }
+
+                    // Redirect to dashboard
                     setTimeout(() => {
-                        redirectToDashboard();
-                    }, 1000);
+                        window.location.href = '/dashboard.html';
+                    }, 1500);
                 } else {
-                    throw new Error(data.message || 'Login gagal');
+                    showError(data.message || 'Email atau kata sandi salah');
                 }
             } catch (error) {
                 console.error('Login error:', error);
-                showError(error.message || 'Terjadi kesalahan. Silakan coba lagi.');
+                showError('Terjadi kesalahan. Silakan coba lagi.');
             } finally {
-                setLoading(false);
+                // Reset button state
+                loginBtn.disabled = false;
+                loginSpinner.classList.remove('show');
+                loginText.textContent = 'Masuk';
             }
+        });
+
+        // Auto-fill demo credentials button (optional UX enhancement)
+        const demoSection = document.querySelector('.bg-blue-50');
+        if (demoSection) {
+            demoSection.style.cursor = 'pointer';
+            demoSection.addEventListener('click', () => {
+                emailInput.value = 'admin@laundry.com';
+                passwordInput2.value = 'password123';
+                emailInput.focus();
+            });
         }
-        
-        // Load Remembered Email
-        function loadRememberedEmail() {
-            const rememberedEmail = localStorage.getItem('remembered_email');
-            if (rememberedEmail) {
-                emailInput.value = rememberedEmail;
-                rememberMeCheckbox.checked = true;
-            }
-        }
-        
-        // Show Error Message
-        function showError(message) {
-            errorMessage.textContent = message;
-            errorMessage.classList.add('show');
-        }
-        
-        // Show Success Message
-        function showSuccess(message) {
-            successMessage.textContent = message;
-            successMessage.classList.add('show');
-        }
-        
-        // Clear Messages
-        function clearMessages() {
-            errorMessage.classList.remove('show');
-            successMessage.classList.remove('show');
-        }
-        
-        // Set Loading State
-        function setLoading(isLoading) {
-            loginBtn.disabled = isLoading;
-            if (isLoading) {
-                btnText.innerHTML = '<span class="loading-spinner"></span>Memproses...';
-            } else {
-                btnText.textContent = 'Masuk';
-            }
-        }
-        
-        // Handle Forgot Password
-        function handleForgotPassword() {
-            const email = prompt('Masukkan email Anda untuk reset password:');
-            if (email) {
-                clearMessages();
-                setLoading(true);
-                
-                fetch(`${API_BASE}/auth/forgot-password`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ email: email })
-                })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.success) {
-                        showSuccess('Instruksi reset password telah dikirim ke email Anda');
-                    } else {
-                        showError(data.message || 'Gagal mengirim instruksi reset');
-                    }
-                })
-                .catch(err => {
-                    showError('Terjadi kesalahan. Silakan coba lagi.');
-                })
-                .finally(() => setLoading(false));
-            }
-        }
-        
-        // Redirect to Dashboard
-        function redirectToDashboard() {
-            window.location.href = '/dashboard.html';
-        }
-        
-        // Keyboard shortcuts
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && document.activeElement !== loginBtn) {
-                loginForm.dispatchEvent(new Event('submit'));
+
+        // Check for existing session on page load
+        window.addEventListener('load', () => {
+            const token = localStorage.getItem('auth_token') || sessionStorage.getItem('auth_token');
+            if (token) {
+                window.location.href = '/dashboard.html';
             }
         });
     </script>
