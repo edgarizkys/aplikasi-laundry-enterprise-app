@@ -1,71 +1,89 @@
-I'll generate a production-ready Express.js backend for the Laundry Enterprise application. This will be chunked according to the protocol.
+I'll generate a production-ready Express.js backend for the Laundry Enterprise application. This is a substantial file, so I'll follow the chunked write protocol.
 
-**CHUNK 1: app.js (Initial Setup - Lines 1-300)**
-<function_calls>
-<invoke name="write_to_file">
-<parameter name="path">app.js</parameter>
-<parameter name="content">const express = require('express');
-const cors = require('cors');
-const dotenv = require('dotenv');
-const { createClient } = require('@libsql/client');
-const path = require('path');
-const helmet = require('helmet');
-const morgan = require('morgan');
+Let me start with the first chunk (imports, middleware, and database setup):
+```javascript
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import { createClient } from '@libsql/client';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
+import { v4 as uuidv4 } from 'uuid';
 
 dotenv.config();
 
 const app = express();
+const PORT = process.env.PORT || 3001;
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
-// Middleware
-app.use(helmet());
-app.use(morgan('combined'));
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || '*',
-  credentials: true,
-  optionsSuccessStatus: 200
-}));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
-
-// Turso SQLite Client
+// Database connection using Turso SQLite
 const db = createClient({
-  url: process.env.TURSO_DATABASE_URL,
+  url: process.env.TURSO_CONNECTION_URL || 'file:./laundry.db',
   authToken: process.env.TURSO_AUTH_TOKEN
 });
 
-// Global DB reference
-app.locals.db = db;
+// Middleware
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
+app.use(cors({
+  origin: process.env.CORS_ORIGIN || ['http://localhost:3000', 'http://localhost:5173'],
+  credentials: true
+}));
 
-// ============================================================================
-// DATABASE INITIALIZATION
-// ============================================================================
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
+  next();
+});
 
+// Error handling middleware
+const asyncHandler = (fn) => (req, res, next) => {
+  Promise.resolve(fn(req, res, next)).catch(next);
+};
+
+// Authentication middleware
+const authMiddleware = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ error: 'Token tidak ditemukan' });
+  }
+  
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (error) {
+    return res.status(401).json({ error: 'Token tidak valid' });
+  }
+};
+
+// Database initialization
 async function initializeDatabase() {
   try {
-    // Orders Table
+    // Orders table
     await db.execute(`
       CREATE TABLE IF NOT EXISTS orders (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         order_number TEXT UNIQUE NOT NULL,
+        customer_id TEXT NOT NULL,
         customer_name TEXT NOT NULL,
         phone TEXT NOT NULL,
-        email TEXT,
-        items_list TEXT NOT NULL,
-        total_weight_kg REAL NOT NULL,
+        items_count INTEGER NOT NULL,
+        weight_kg REAL NOT NULL,
         service_type TEXT NOT NULL,
         total_price REAL NOT NULL,
         status TEXT DEFAULT 'pending',
-        pickup_date DATE NOT NULL,
-        delivery_date DATE NOT NULL,
+        pickup_date TEXT NOT NULL,
+        delivery_date TEXT NOT NULL,
         assigned_staff TEXT,
         notes TEXT,
-        branch_id TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    // Customers Table
+    // Customers table
     await db.execute(`
       CREATE TABLE IF NOT EXISTS customers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,787 +92,830 @@ async function initializeDatabase() {
         phone TEXT NOT NULL,
         email TEXT,
         address TEXT,
-        city TEXT,
         loyalty_points INTEGER DEFAULT 0,
         total_spent REAL DEFAULT 0,
-        registration_date DATE DEFAULT CURRENT_DATE,
-        branch_id TEXT,
+        member_tier TEXT DEFAULT 'Regular',
+        joined_date TEXT NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    // Staff Table
+    // Staff table
     await db.execute(`
       CREATE TABLE IF NOT EXISTS staff (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         staff_id TEXT UNIQUE NOT NULL,
         name TEXT NOT NULL,
-        role TEXT NOT NULL,
+        position TEXT NOT NULL,
         phone TEXT NOT NULL,
         email TEXT,
-        shift TEXT,
-        salary REAL,
-        join_date DATE NOT NULL,
-        status TEXT DEFAULT 'aktif',
-        branch_id TEXT,
+        salary REAL NOT NULL,
+        hire_date TEXT NOT NULL,
+        status TEXT DEFAULT 'active',
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    // Machines Table
+    // Services table
     await db.execute(`
-      CREATE TABLE IF NOT EXISTS machines (
+      CREATE TABLE IF NOT EXISTS services (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        machine_id TEXT UNIQUE NOT NULL,
+        service_id TEXT UNIQUE NOT NULL,
         name TEXT NOT NULL,
-        type TEXT NOT NULL,
-        capacity_kg REAL NOT NULL,
-        location TEXT,
-        status TEXT DEFAULT 'aktif',
-        last_maintenance DATE,
-        next_maintenance DATE,
-        branch_id TEXT,
+        price_per_kg REAL NOT NULL,
+        turnaround_days INTEGER NOT NULL,
+        description TEXT,
+        active BOOLEAN DEFAULT 1,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    // Payments Table
+    // Payments table
     await db.execute(`
       CREATE TABLE IF NOT EXISTS payments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         payment_id TEXT UNIQUE NOT NULL,
-        order_number TEXT NOT NULL,
-        customer_name TEXT NOT NULL,
+        order_id TEXT NOT NULL,
         amount REAL NOT NULL,
         payment_method TEXT NOT NULL,
         status TEXT DEFAULT 'pending',
-        payment_date DATE,
-        reference_number TEXT,
-        branch_id TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (order_number) REFERENCES orders(order_number)
-      )
-    `);
-
-    // Branches Table
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS branches (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        branch_id TEXT UNIQUE NOT NULL,
-        name TEXT NOT NULL,
-        address TEXT NOT NULL,
-        phone TEXT NOT NULL,
-        email TEXT,
-        manager_name TEXT,
-        operating_hours TEXT,
-        total_machines INTEGER DEFAULT 0,
+        paid_date TEXT,
+        reference TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    // Create indexes
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_orders_branch ON orders(branch_id)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer_name)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_customers_branch ON customers(branch_id)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_staff_branch ON staff(branch_id)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_machines_branch ON machines(branch_id)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_payments_branch ON payments(branch_id)');
+    // Inventory table
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS inventory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        item_id TEXT UNIQUE NOT NULL,
+        item_name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        quantity REAL NOT NULL,
+        unit TEXT NOT NULL,
+        reorder_level REAL NOT NULL,
+        unit_cost REAL NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
 
-    console.log('✓ Database initialized successfully');
+    // Users/Auth table
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        email TEXT UNIQUE NOT NULL,
+        password TEXT NOT NULL,
+        role TEXT DEFAULT 'staff',
+        status TEXT DEFAULT 'active',
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    console.log('Database initialized successfully');
   } catch (error) {
-    console.error('✗ Database initialization error:', error);
+    console.error('Database initialization error:', error);
+  }
+}
+
+// ============ AUTHENTICATION ROUTES ============
+
+// Register
+app.post('/api/auth/register', asyncHandler(async (req, res) => {
+  const { username, email, password, role } = req.body;
+
+  if (!username || !email || !password) {
+    return res.status(400).json({ error: 'Username, email, dan password diperlukan' });
+  }
+
+  try {
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    const result = await db.execute({
+      sql: 'INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)',
+      args: [username, email, hashedPassword, role || 'staff']
+    });
+
+    res.status(201).json({
+      message: 'Pengguna berhasil didaftar',
+      user_id: result.lastInsertRowid
+    });
+  } catch (error) {
+    if (error.message.includes('UNIQUE')) {
+      return res.status(409).json({ error: 'Username atau email sudah terdaftar' });
+    }
     throw error;
   }
-}
+}));
 
-// ============================================================================
-// UTILITY FUNCTIONS
-// ============================================================================
+// Login
+app.post('/api/auth/login', asyncHandler(async (req, res) => {
+  const { username, password } = req.body;
 
-function generateId(prefix) {
-  const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(36).substr(2, 5);
-  return `${prefix}-${timestamp}-${random}`.toUpperCase();
-}
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username dan password diperlukan' });
+  }
 
-function formatResponse(data, message = 'Success', statusCode = 200) {
-  return {
-    statusCode,
-    success: statusCode < 400,
-    message,
-    data,
-    timestamp: new Date().toISOString()
-  };
-}
+  const user = await db.execute({
+    sql: 'SELECT * FROM users WHERE username = ?',
+    args: [username]
+  });
 
-function errorResponse(message, statusCode = 400, details = null) {
-  return {
-    statusCode,
-    success: false,
-    message,
-    details,
-    timestamp: new Date().toISOString()
-  };
-}
+  if (user.rows.length === 0) {
+    return res.status(401).json({ error: 'Username atau password salah' });
+  }
 
-// ============================================================================
-// MIDDLEWARE
-// ============================================================================
+  const dbUser = user.rows[0];
+  const passwordMatch = await bcrypt.compare(password, dbUser.password);
 
-// Branch validation middleware
-app.use((req, res, next) => {
-  const branchId = req.query.branch_id || req.body.branch_id || 'BRANCH-001';
-  req.branchId = branchId;
-  next();
-});
+  if (!passwordMatch) {
+    return res.status(401).json({ error: 'Username atau password salah' });
+  }
 
-// Error handler middleware
-app.use((err, req, res, next) => {
-  console.error('Error:', err);
-  res.status(err.status || 500).json(
-    errorResponse(
-      err.message || 'Internal Server Error',
-      err.status || 500,
-      process.env.NODE_ENV === 'development' ? err.stack : undefined
-    )
+  const token = jwt.sign(
+    { id: dbUser.id, username: dbUser.username, role: dbUser.role },
+    JWT_SECRET,
+    { expiresIn: '24h' }
   );
-});
 
-// ============================================================================
-// ORDERS ROUTES
-// ============================================================================
+  res.json({
+    token,
+    user: {
+      id: dbUser.id,
+      username: dbUser.username,
+      email: dbUser.email,
+      role: dbUser.role
+    }
+  });
+}));
+
+// ============ ORDERS ROUTES ============
 
 // Get all orders with pagination
-app.get('/api/orders', async (req, res) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const status = req.query.status;
-    const offset = (page - 1) * limit;
+app.get('/api/orders', authMiddleware, asyncHandler(async (req, res) => {
+  const { page = 1, limit = 10, status, search } = req.query;
+  const offset = (page - 1) * limit;
 
-    let query = 'SELECT * FROM orders WHERE branch_id = ? ';
-    const params = [req.branchId];
+  let query = 'SELECT * FROM orders WHERE 1=1';
+  const args = [];
 
-    if (status) {
-      query += 'AND status = ? ';
-      params.push(status);
-    }
-
-    query += 'ORDER BY created_at DESC LIMIT ? OFFSET ?';
-    params.push(limit, offset);
-
-    const result = await db.execute({
-      sql: query,
-      args: params
-    });
-
-    const countResult = await db.execute({
-      sql: 'SELECT COUNT(*) as total FROM orders WHERE branch_id = ?' + (status ? ' AND status = ?' : ''),
-      args: status ? [req.branchId, status] : [req.branchId]
-    });
-
-    const total = countResult.rows[0].total;
-    const totalPages = Math.ceil(total / limit);
-
-    res.json(formatResponse({
-      orders: result.rows,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages
-      }
-    }, 'Orders retrieved successfully'));
-  } catch (error) {
-    console.error('Error fetching orders:', error);
-    res.status(500).json(errorResponse('Failed to fetch orders', 500, error.message));
+  if (status) {
+    query += ' AND status = ?';
+    args.push(status);
   }
-});
+
+  if (search) {
+    query += ' AND (customer_name LIKE ? OR order_number LIKE ? OR phone LIKE ?)';
+    args.push(`%${search}%`, `%${search}%`, `%${search}%`);
+  }
+
+  query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  args.push(limit, offset);
+
+  const result = await db.execute({ sql: query, args });
+  
+  const countResult = await db.execute({
+    sql: 'SELECT COUNT(*) as total FROM orders',
+    args: []
+  });
+
+  const total = countResult.rows[0].total;
+
+  res.json({
+    data: result.rows,
+    pagination: {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      total,
+      pages: Math.ceil(total / limit)
+    }
+  });
+}));
 
 // Get single order
-app.get('/api/orders/:orderId', async (req, res) => {
-  try {
-    const result = await db.execute({
-      sql: 'SELECT * FROM orders WHERE id = ? AND branch_id = ?',
-      args: [parseInt(req.params.orderId), req.branchId]
-    });
+app.get('/api/orders/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.execute({
+    sql: 'SELECT * FROM orders WHERE id = ?',
+    args: [req.params.id]
+  });
 
-    if (!result.rows.length) {
-      return res.status(404).json(errorResponse('Order not found', 404));
-    }
-
-    res.json(formatResponse(result.rows[0], 'Order retrieved successfully'));
-  } catch (error) {
-    console.error('Error fetching order:', error);
-    res.status(500).json(errorResponse('Failed to fetch order', 500, error.message));
+  if (result.rows.length === 0) {
+    return res.status(404).json({ error: 'Pesanan tidak ditemukan' });
   }
-});
 
-// Create new order
-app.post('/api/orders', async (req, res) => {
-  try {
-    const {
+  res.json(result.rows[0]);
+}));
+
+// Create order
+app.post('/api/orders', authMiddleware, asyncHandler(async (req, res) => {
+  const {
+    customer_id,
+    customer_name,
+    phone,
+    items_count,
+    weight_kg,
+    service_type,
+    total_price,
+    pickup_date,
+    delivery_date,
+    assigned_staff,
+    notes
+  } = req.body;
+
+  if (!customer_name || !phone || !weight_kg || !service_type || !total_price) {
+    return res.status(400).json({ error: 'Field wajib diisi' });
+  }
+
+  const order_number = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
+
+  const result = await db.execute({
+    sql: `INSERT INTO orders 
+          (order_number, customer_id, customer_name, phone, items_count, weight_kg, service_type, total_price, status, pickup_date, delivery_date, assigned_staff, notes)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      order_number,
+      customer_id || `CUST-${uuidv4().substr(0, 8).toUpperCase()}`,
       customer_name,
       phone,
-      email,
-      items_list,
-      total_weight_kg,
+      items_count || 0,
+      weight_kg,
       service_type,
       total_price,
+      'pending',
       pickup_date,
       delivery_date,
       assigned_staff,
-      notes
-    } = req.body;
+      notes || ''
+    ]
+  });
 
-    // Validation
-    if (!customer_name || !phone || !items_list || !total_weight_kg || !service_type || !total_price || !pickup_date || !delivery_date) {
-      return res.status(400).json(errorResponse('Missing required fields', 400));
-    }
-
-    const order_number = generateId('ORD');
-
-    const result = await db.execute({
-      sql: `INSERT INTO orders 
-        (order_number, customer_name, phone, email, items_list, total_weight_kg, 
-         service_type, total_price, status, pickup_date, delivery_date, 
-         assigned_staff, notes, branch_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-      args: [
-        order_number, customer_name, phone, email || null, items_list, total_weight_kg,
-        service_type, total_price, 'pending', pickup_date, delivery_date,
-        assigned_staff || null, notes || null, req.branchId
-      ]
-    });
-
-    res.status(201).json(formatResponse({
-      id: result.lastInsertRowid,
-      order_number,
-      ...req.body
-    }, 'Order created successfully', 201));
-  } catch (error) {
-    console.error('Error creating order:', error);
-    res.status(500).json(errorResponse('Failed to create order', 500, error.message));
-  }
-});
+  res.status(201).json({
+    message: 'Pesanan berhasil dibuat',
+    order_id: result.lastInsertRowid,
+    order_number
+  });
+}));
 
 // Update order
-app.put('/api/orders/:orderId', async (req, res) => {
-  try {
-    const orderId = parseInt(req.params.orderId);
-    const updates = req.body;
+app.put('/api/orders/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const { status, assigned_staff, notes, delivery_date } = req.body;
 
-    // Build update query
-    const updateFields = [];
-    const values = [];
+  const result = await db.execute({
+    sql: 'SELECT * FROM orders WHERE id = ?',
+    args: [req.params.id]
+  });
 
-    for (const [key, value] of Object.entries(updates)) {
-      if (key !== 'id' && key !== 'order_number' && key !== 'branch_id') {
-        updateFields.push(`${key} = ?`);
-        values.push(value);
-      }
-    }
-
-    if (updateFields.length === 0) {
-      return res.status(400).json(errorResponse('No fields to update', 400));
-    }
-
-    updateFields.push('updated_at = CURRENT_TIMESTAMP');
-    values.push(orderId, req.branchId);
-
-    const result = await db.execute({
-      sql: `UPDATE orders SET ${updateFields.join(', ')} WHERE id = ? AND branch_id = ?`,
-      args: values
-    });
-
-    if (result.rowsAffected === 0) {
-      return res.status(404).json(errorResponse('Order not found', 404));
-    }
-
-    res.json(formatResponse(updates, 'Order updated successfully'));
-  } catch (error) {
-    console.error('Error updating order:', error);
-    res.status(500).json(errorResponse('Failed to update order', 500, error.message));
+  if (result.rows.length === 0) {
+    return res.status(404).json({ error: 'Pesanan tidak ditemukan' });
   }
-});
+
+  const order = result.rows[0];
+  const updatedStatus = status || order.status;
+  const updatedStaff = assigned_staff || order.assigned_staff;
+  const updatedNotes = notes !== undefined ? notes : order.notes;
+  const updatedDeliveryDate = delivery_date || order.delivery_date;
+
+  await db.execute({
+    sql: `UPDATE orders 
+          SET status = ?, assigned_staff = ?, notes = ?, delivery_date = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?`,
+    args: [updatedStatus, updatedStaff, updatedNotes, updatedDeliveryDate, req.params.id]
+  });
+
+  res.json({ message: 'Pesanan berhasil diperbarui' });
+}));
 
 // Delete order
-app.delete('/api/orders/:orderId', async (req, res) => {
-  try {
-    const orderId = parseInt(req.params.orderId);
+app.delete('/api/orders/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.execute({
+    sql: 'SELECT * FROM orders WHERE id = ?',
+    args: [req.params.id]
+  });
 
-    const result = await db.execute({
-      sql: 'DELETE FROM orders WHERE id = ? AND branch_id = ?',
-      args: [orderId, req.branchId]
-    });
+  if (result.rows.length === 0) {
+    return res.status(404).json({ error: 'Pesanan tidak ditemukan' });
+  }
 
-    if (result.rowsAffected === 0) {
-      return res.status(404).json(errorResponse('Order not found', 404));
+  await db.execute({
+    sql: 'DELETE FROM orders WHERE id = ?',
+    args: [req.params.id]
+  });
+
+  res.json({ message: 'Pesanan berhasil dihapus' });
+}));
+```
+
+Now let me append the customers routes (chunk 2):
+```javascript
+// ============ CUSTOMERS ROUTES ============
+
+// Get all customers with pagination
+app.get('/api/customers', authMiddleware, asyncHandler(async (req, res) => {
+  const { page = 1, limit = 10, search, tier } = req.query;
+  const offset = (page - 1) * limit;
+
+  let query = 'SELECT * FROM customers WHERE 1=1';
+  const args = [];
+
+  if (search) {
+    query += ' AND (name LIKE ? OR phone LIKE ? OR email LIKE ?)';
+    args.push(`%${search}%`, `%${search}%`, `%${search}%`);
+  }
+
+  if (tier) {
+    query += ' AND member_tier = ?';
+    args.push(tier);
+  }
+
+  query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  args.push(limit, offset);
+
+  const result = await db.execute({ sql: query, args });
+  
+  const countResult = await db.execute({
+    sql: 'SELECT COUNT(*) as total FROM customers'
+  });
+
+  const total = countResult.rows[0].total;
+
+  res.json({
+    data: result.rows,
+    pagination: {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      total,
+      pages: Math.ceil(total / limit)
     }
-
-    res.json(formatResponse(null, 'Order deleted successfully'));
-  } catch (error) {
-    console.error('Error deleting order:', error);
-    res.status(500).json(errorResponse('Failed to delete order', 500, error.message));
-  }
-});
-
-// ============================================================================
-// CUSTOMERS ROUTES
-// ============================================================================
-
-// Get all customers
-app.get('/api/customers', async (req, res) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = (page - 1) * limit;
-
-    const result = await db.execute({
-      sql: `SELECT * FROM customers WHERE branch_id = ? 
-            ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-      args: [req.branchId, limit, offset]
-    });
-
-    const countResult = await db.execute({
-      sql: 'SELECT COUNT(*) as total FROM customers WHERE branch_id = ?',
-      args: [req.branchId]
-    });
-
-    const total = countResult.rows[0].total;
-    const totalPages = Math.ceil(total / limit);
-
-    res.json(formatResponse({
-      customers: result.rows,
-      pagination: { page, limit, total, totalPages }
-    }, 'Customers retrieved successfully'));
-  } catch (error) {
-    console.error('Error fetching customers:', error);
-    res.status(500).json(errorResponse('Failed to fetch customers', 500, error.message));
-  }
-});
+  });
+}));
 
 // Get single customer
-app.get('/api/customers/:customerId', async (req, res) => {
-  try {
-    const result = await db.execute({
-      sql: 'SELECT * FROM customers WHERE id = ? AND branch_id = ?',
-      args: [parseInt(req.params.customerId), req.branchId]
-    });
+app.get('/api/customers/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.execute({
+    sql: 'SELECT * FROM customers WHERE id = ?',
+    args: [req.params.id]
+  });
 
-    if (!result.rows.length) {
-      return res.status(404).json(errorResponse('Customer not found', 404));
-    }
-
-    res.json(formatResponse(result.rows[0], 'Customer retrieved successfully'));
-  } catch (error) {
-    console.error('Error fetching customer:', error);
-    res.status(500).json(errorResponse('Failed to fetch customer', 500, error.message));
+  if (result.rows.length === 0) {
+    return res.status(404).json({ error: 'Pelanggan tidak ditemukan' });
   }
-});
+
+  res.json(result.rows[0]);
+}));
 
 // Create customer
-app.post('/api/customers', async (req, res) => {
-  try {
-    const { name, phone, email, address, city } = req.body;
+app.post('/api/customers', authMiddleware, asyncHandler(async (req, res) => {
+  const {
+    name,
+    phone,
+    email,
+    address,
+    member_tier
+  } = req.body;
 
-    if (!name || !phone) {
-      return res.status(400).json(errorResponse('Missing required fields', 400));
-    }
-
-    const customer_id = generateId('CUST');
-
-    const result = await db.execute({
-      sql: `INSERT INTO customers 
-        (customer_id, name, phone, email, address, city, branch_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-      args: [customer_id, name, phone, email || null, address || null, city || null, req.branchId]
-    });
-
-    res.status(201).json(formatResponse({
-      id: result.lastInsertRowid,
-      customer_id,
-      ...req.body
-    }, 'Customer created successfully', 201));
-  } catch (error) {
-    console.error('Error creating customer:', error);
-    res.status(500).json(errorResponse('Failed to create customer', 500, error.message));
+  if (!name || !phone) {
+    return res.status(400).json({ error: 'Nama dan telepon diperlukan' });
   }
-});
+
+  const customer_id = `CUST-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+  const joined_date = new Date().toISOString().split('T')[0];
+
+  const result = await db.execute({
+    sql: `INSERT INTO customers 
+          (customer_id, name, phone, email, address, member_tier, joined_date)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      customer_id,
+      name,
+      phone,
+      email || '',
+      address || '',
+      member_tier || 'Regular',
+      joined_date
+    ]
+  });
+
+  res.status(201).json({
+    message: 'Pelanggan berhasil ditambahkan',
+    customer_id: result.lastInsertRowid,
+    cust_id: customer_id
+  });
+}));
 
 // Update customer
-app.put('/api/customers/:customerId', async (req, res) => {
-  try {
-    const customerId = parseInt(req.params.customerId);
-    const updates = req.body;
+app.put('/api/customers/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const { name, phone, email, address, member_tier, loyalty_points, total_spent } = req.body;
 
-    const updateFields = [];
-    const values = [];
+  const result = await db.execute({
+    sql: 'SELECT * FROM customers WHERE id = ?',
+    args: [req.params.id]
+  });
 
-    for (const [key, value] of Object.entries(updates)) {
-      if (key !== 'id' && key !== 'customer_id' && key !== 'branch_id') {
-        updateFields.push(`${key} = ?`);
-        values.push(value);
-      }
-    }
-
-    if (updateFields.length === 0) {
-      return res.status(400).json(errorResponse('No fields to update', 400));
-    }
-
-    updateFields.push('updated_at = CURRENT_TIMESTAMP');
-    values.push(customerId, req.branchId);
-
-    const result = await db.execute({
-      sql: `UPDATE customers SET ${updateFields.join(', ')} WHERE id = ? AND branch_id = ?`,
-      args: values
-    });
-
-    if (result.rowsAffected === 0) {
-      return res.status(404).json(errorResponse('Customer not found', 404));
-    }
-
-    res.json(formatResponse(updates, 'Customer updated successfully'));
-  } catch (error) {
-    console.error('Error updating customer:', error);
-    res.status(500).json(errorResponse('Failed to update customer', 500, error.message));
+  if (result.rows.length === 0) {
+    return res.status(404).json({ error: 'Pelanggan tidak ditemukan' });
   }
-});
 
-// Delete customer
-app.delete('/api/customers/:customerId', async (req, res) => {
-  try {
-    const customerId = parseInt(req.params.customerId);
+  const customer = result.rows[0];
 
-    const result = await db.execute({
-      sql: 'DELETE FROM customers WHERE id = ? AND branch_id = ?',
-      args: [customerId, req.branchId]
-    });
+  await db.execute({
+    sql: `UPDATE customers 
+          SET name = ?, phone = ?, email = ?, address = ?, member_tier = ?, loyalty_points = ?, total_spent = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?`,
+    args: [
+      name || customer.name,
+      phone || customer.phone,
+      email !== undefined ? email : customer.email,
+      address !== undefined ? address : customer.address,
+      member_tier || customer.member_tier,
+      loyalty_points !== undefined ? loyalty_points : customer.loyalty_points,
+      total_spent !== undefined ? total_spent : customer.total_spent,
+      req.params.id
+    ]
+  });
 
-    if (result.rowsAffected === 0) {
-      return res.status(404).json(errorResponse('Customer not found', 404));
-    }
-
-    res.json(formatResponse(null, 'Customer deleted successfully'));
-  } catch (error) {
-    console.error('Error deleting customer:', error);
-    res.status(500).json(errorResponse('Failed to delete customer', 500, error.message));
-  }
-});
+  res.json({ message: 'Pelanggan berhasil diperbarui' });
+}));
 
 // Add loyalty points
-app.post('/api/customers/:customerId/loyalty', async (req, res) => {
-  try {
-    const customerId = parseInt(req.params.customerId);
-    const { points } = req.body;
+app.post('/api/customers/:id/loyalty', authMiddleware, asyncHandler(async (req, res) => {
+  const { points } = req.body;
 
-    if (!points || typeof points !== 'number') {
-      return res.status(400).json(errorResponse('Invalid points value', 400));
-    }
-
-    const result = await db.execute({
-      sql: `UPDATE customers SET loyalty_points = loyalty_points + ?, updated_at = CURRENT_TIMESTAMP 
-            WHERE id = ? AND branch_id = ?`,
-      args: [points, customerId, req.branchId]
-    });
-
-    if (result.rowsAffected === 0) {
-      return res.status(404).json(errorResponse('Customer not found', 404));
-    }
-
-    res.json(formatResponse({ points_added: points }, 'Loyalty points added successfully'));
-  } catch (error) {
-    console.error('Error adding loyalty points:', error);
-    res.status(500).json(errorResponse('Failed to add loyalty points', 500, error.message));
+  if (points === undefined) {
+    return res.status(400).json({ error: 'Poin diperlukan' });
   }
-});
 
-// Get customer orders
-app.get('/api/customers/:customerId/orders', async (req, res) => {
-  try {
-    const customerId = parseInt(req.params.customerId);
+  const result = await db.execute({
+    sql: 'SELECT * FROM customers WHERE id = ?',
+    args: [req.params.id]
+  });
 
-    const customerResult = await db.execute({
-      sql: 'SELECT name FROM customers WHERE id = ? AND branch_id = ?',
-      args: [customerId, req.branchId]
-    });
+  if (result.rows.length === 0) {
+    return res.status(404).json({ error: 'Pelanggan tidak ditemukan' });
+  }
 
-    if (!customerResult.rows.length) {
-      return res.status(404).json(errorResponse('Customer not found', 404));
+  const customer = result.rows[0];
+  const newPoints = (customer.loyalty_points || 0) + points;
+
+  await db.execute({
+    sql: 'UPDATE customers SET loyalty_points = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
+    args: [newPoints, req.params.id]
+  });
+
+  res.json({ message: 'Poin loyalitas berhasil ditambahkan', new_points: newPoints });
+}));
+
+// Delete customer
+app.delete('/api/customers/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.execute({
+    sql: 'SELECT * FROM customers WHERE id = ?',
+    args: [req.params.id]
+  });
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ error: 'Pelanggan tidak ditemukan' });
+  }
+
+  await db.execute({
+    sql: 'DELETE FROM customers WHERE id = ?',
+    args: [req.params.id]
+  });
+
+  res.json({ message: 'Pelanggan berhasil dihapus' });
+}));
+
+// ============ STAFF ROUTES ============
+
+// Get all staff with pagination
+app.get('/api/staff', authMiddleware, asyncHandler(async (req, res) => {
+  const { page = 1, limit = 10, position, status } = req.query;
+  const offset = (page - 1) * limit;
+
+  let query = 'SELECT * FROM staff WHERE 1=1';
+  const args = [];
+
+  if (position) {
+    query += ' AND position = ?';
+    args.push(position);
+  }
+
+  if (status) {
+    query += ' AND status = ?';
+    args.push(status);
+  }
+
+  query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  args.push(limit, offset);
+
+  const result = await db.execute({ sql: query, args });
+  
+  const countResult = await db.execute({
+    sql: 'SELECT COUNT(*) as total FROM staff'
+  });
+
+  const total = countResult.rows[0].total;
+
+  res.json({
+    data: result.rows,
+    pagination: {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      total,
+      pages: Math.ceil(total / limit)
     }
+  });
+}));
 
-    const customerName = customerResult.rows[0].name;
+// Get single staff
+app.get('/api/staff/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.execute({
+    sql: 'SELECT * FROM staff WHERE id = ?',
+    args: [req.params.id]
+  });
 
-    const ordersResult = await db.execute({
-      sql: `SELECT * FROM orders WHERE customer_name = ? AND branch_id = ? 
-            ORDER BY created_at DESC`,
-      args: [customerName, req.branchId]
-    });
-
-    res.json(formatResponse({
-      customer_name: customerName,
-      orders: ordersResult.rows
-    }, 'Customer orders retrieved successfully'));
-  } catch (error) {
-    console.error('Error fetching customer orders:', error);
-    res.status(500).json(errorResponse('Failed to fetch customer orders', 500, error.message));
+  if (result.rows.length === 0) {
+    return res.status(404).json({ error: 'Staff tidak ditemukan' });
   }
-});
 
-// ============================================================================
-// STAFF ROUTES
-// ============================================================================
-
-// Get all staff
-app.get('/api/staff', async (req, res) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = (page - 1) * limit;
-
-    const result = await db.execute({
-      sql: `SELECT * FROM staff WHERE branch_id = ? 
-            ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-      args: [req.branchId, limit, offset]
-    });
-
-    const countResult = await db.execute({
-      sql: 'SELECT COUNT(*) as total FROM staff WHERE branch_id = ?',
-      args: [req.branchId]
-    });
-
-    const total = countResult.rows[0].total;
-    const totalPages = Math.ceil(total / limit);
-
-    res.json(formatResponse({
-      staff: result.rows,
-      pagination: { page, limit, total, totalPages }
-    }, 'Staff retrieved successfully'));
-  } catch (error) {
-    console.error('Error fetching staff:', error);
-    res.status(500).json(errorResponse('Failed to fetch staff', 500, error.message));
-  }
-});
-
-// Get single staff member
-app.get('/api/staff/:staffId', async (req, res) => {
-  try {
-    const result = await db.execute({
-      sql: 'SELECT * FROM staff WHERE id = ? AND branch_id = ?',
-      args: [parseInt(req.params.staffId), req.branchId]
-    });
-
-    if (!result.rows.length) {
-      return res.status(404).json(errorResponse('Staff member not found', 404));
-    }
-
-    res.json(formatResponse(result.rows[0], 'Staff member retrieved successfully'));
-  } catch (error) {
-    console.error('Error fetching staff member:', error);
-    res.status(500).json(errorResponse('Failed to fetch staff member', 500, error.message));
-  }
-});
+  res.json(result.rows[0]);
+}));
 
 // Create staff
-app.post('/api/staff', async (req, res) => {
-  try {
-    const { name, role, phone, email, shift, salary, join_date, status } = req.body;
+app.post('/api/staff', authMiddleware, asyncHandler(async (req, res) => {
+  const {
+    name,
+    position,
+    phone,
+    email,
+    salary,
+    hire_date,
+    status
+  } = req.body;
 
-    if (!name || !role || !phone || !join_date) {
-      return res.status(400).json(errorResponse('Missing required fields', 400));
-    }
-
-    const staff_id = generateId('STAFF');
-
-    const result = await db.execute({
-      sql: `INSERT INTO staff 
-        (staff_id, name, role, phone, email, shift, salary, join_date, status, branch_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-      args: [staff_id, name, role, phone, email || null, shift || null, salary || null, join_date, status || 'aktif', req.branchId]
-    });
-
-    res.status(201).json(formatResponse({
-      id: result.lastInsertRowid,
-      staff_id,
-      ...req.body
-    }, 'Staff created successfully', 201));
-  } catch (error) {
-    console.error('Error creating staff:', error);
-    res.status(500).json(errorResponse('Failed to create staff', 500, error.message));
+  if (!name || !position || !phone || !salary) {
+    return res.status(400).json({ error: 'Field wajib diisi' });
   }
-});
+
+  const staff_id = `STF-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
+
+  const result = await db.execute({
+    sql: `INSERT INTO staff 
+          (staff_id, name, position, phone, email, salary, hire_date, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      staff_id,
+      name,
+      position,
+      phone,
+      email || '',
+      salary,
+      hire_date,
+      status || 'active'
+    ]
+  });
+
+  res.status(201).json({
+    message: 'Staff berhasil ditambahkan',
+    staff_id: result.lastInsertRowid,
+    stf_id: staff_id
+  });
+}));
 
 // Update staff
-app.put('/api/staff/:staffId', async (req, res) => {
-  try {
-    const staffId = parseInt(req.params.staffId);
-    const updates = req.body;
+app.put('/api/staff/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const { name, position, phone, email, salary, hire_date, status } = req.body;
 
-    const updateFields = [];
-    const values = [];
+  const result = await db.execute({
+    sql: 'SELECT * FROM staff WHERE id = ?',
+    args: [req.params.id]
+  });
 
-    for (const [key, value] of Object.entries(updates)) {
-      if (key !== 'id' && key !== 'staff_id' && key !== 'branch_id') {
-        updateFields.push(`${key} = ?`);
-        values.push(value);
-      }
-    }
-
-    if (updateFields.length === 0) {
-      return res.status(400).json(errorResponse('No fields to update', 400));
-    }
-
-    updateFields.push('updated_at = CURRENT_TIMESTAMP');
-    values.push(staffId, req.branchId);
-
-    const result = await db.execute({
-      sql: `UPDATE staff SET ${updateFields.join(', ')} WHERE id = ? AND branch_id = ?`,
-      args: values
-    });
-
-    if (result.rowsAffected === 0) {
-      return res.status(404).json(errorResponse('Staff member not found', 404));
-    }
-
-    res.json(formatResponse(updates, 'Staff updated successfully'));
-  } catch (error) {
-    console.error('Error updating staff:', error);
-    res.status(500).json(errorResponse('Failed to update staff', 500, error.message));
+  if (result.rows.length === 0) {
+    return res.status(404).json({ error: 'Staff tidak ditemukan' });
   }
-});
+
+  const staff = result.rows[0];
+
+  await db.execute({
+    sql: `UPDATE staff 
+          SET name = ?, position = ?, phone = ?, email = ?, salary = ?, hire_date = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?`,
+    args: [
+      name || staff.name,
+      position || staff.position,
+      phone || staff.phone,
+      email !== undefined ? email : staff.email,
+      salary !== undefined ? salary : staff.salary,
+      hire_date || staff.hire_date,
+      status || staff.status,
+      req.params.id
+    ]
+  });
+
+  res.json({ message: 'Staff berhasil diperbarui' });
+}));
 
 // Delete staff
-app.delete('/api/staff/:staffId', async (req, res) => {
-  try {
-    const staffId = parseInt(req.params.staffId);
+app.delete('/api/staff/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.execute({
+    sql: 'SELECT * FROM staff WHERE id = ?',
+    args: [req.params.id]
+  });
 
-    const result = await db.execute({
-      sql: 'DELETE FROM staff WHERE id = ? AND branch_id = ?',
-      args: [staffId, req.branchId]
-    });
-
-    if (result.rowsAffected === 0) {
-      return res.status(404).json(errorResponse('Staff member not found', 404));
-    }
-
-    res.json(formatResponse(null, 'Staff deleted successfully'));
-  } catch (error) {
-    console.error('Error deleting staff:', error);
-    res.status(500).json(errorResponse('Failed to delete staff', 500, error.message));
+  if (result.rows.length === 0) {
+    return res.status(404).json({ error: 'Staff tidak ditemukan' });
   }
-});
 
-// ============================================================================
-// MACHINES ROUTES
-// ============================================================================
+  await db.execute({
+    sql: 'DELETE FROM staff WHERE id = ?',
+    args: [req.params.id]
+  });
 
-// Get all machines
-app.get('/api/machines', async (req, res) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = (page - 1) * limit;
+  res.json({ message: 'Staff berhasil dihapus' });
+}));
+```
 
-    const result = await db.execute({
-      sql: `SELECT * FROM machines WHERE branch_id = ? 
-            ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-      args: [req.branchId, limit, offset]
-    });
+Append chunk 3 - Services routes:
+```javascript
+// ============ SERVICES ROUTES ============
 
-    const countResult = await db.execute({
-      sql: 'SELECT COUNT(*) as total FROM machines WHERE branch_id = ?',
-      args: [req.branchId]
-    });
+// Get all services
+app.get('/api/services', authMiddleware, asyncHandler(async (req, res) => {
+  const { active } = req.query;
 
-    const total = countResult.rows[0].total;
-    const totalPages = Math.ceil(total / limit);
+  let query = 'SELECT * FROM services WHERE 1=1';
+  const args = [];
 
-    res.json(formatResponse({
-      machines: result.rows,
-      pagination: { page, limit, total, totalPages }
-    }, 'Machines retrieved successfully'));
-  } catch (error) {
-    console.error('Error fetching machines:', error);
-    res.status(500).json(errorResponse('Failed to fetch machines', 500, error.message));
+  if (active !== undefined) {
+    query += ' AND active = ?';
+    args.push(active === 'true' ? 1 : 0);
   }
-});
 
-// Get single machine
-app.get('/api/machines/:machineId', async (req, res) => {
-  try {
-    const result = await db.execute({
-      sql: 'SELECT * FROM machines WHERE id = ? AND branch_id = ?',
-      args: [parseInt(req.params.machineId), req.branchId]
-    });
+  query += ' ORDER BY created_at DESC';
 
-    if (!result.rows.length) {
-      return res.status(404).json(errorResponse('Machine not found', 404));
-    }
+  const result = await db.execute({ sql: query, args });
+  res.json(result.rows);
+}));
 
-    res.json(formatResponse(result.rows[0], 'Machine retrieved successfully'));
-  } catch (error) {
-    console.error('Error fetching machine:', error);
-    res.status(500).json(errorResponse('Failed to fetch machine', 500, error.message));
+// Get single service
+app.get('/api/services/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.execute({
+    sql: 'SELECT * FROM services WHERE id = ?',
+    args: [req.params.id]
+  });
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ error: 'Layanan tidak ditemukan' });
   }
-});
 
-// Create machine
-app.post('/api/machines', async (req, res) => {
-  try {
-    const { name, type, capacity_kg, location, status, last_maintenance, next_maintenance } = req.body;
+  res.json(result.rows[0]);
+}));
 
-    if (!name || !type || !capacity_kg) {
-      return res.status(400).json(errorResponse('Missing required fields', 400));
-    }
+// Create service
+app.post('/api/services', authMiddleware, asyncHandler(async (req, res) => {
+  const {
+    name,
+    price_per_kg,
+    turnaround_days,
+    description,
+    active
+  } = req.body;
 
-    const machine_id = generateId('MACH');
-
-    const result = await db.execute({
-      sql: `INSERT INTO machines 
-        (machine_id, name, type, capacity_kg, location, status, last_maintenance, next_maintenance, branch_id, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`,
-      args: [machine_id, name, type, capacity_kg, location || null, status || 'aktif', last_maintenance || null, next_maintenance || null, req.branchId]
-    });
-
-    res.status(201).json(formatResponse({
-      id: result.lastInsertRowid,
-      machine_id,
-      ...req.body
-    }, 'Machine created successfully', 201));
-  } catch (error) {
-    console.error('Error creating machine:', error);
-    res.status(500).json(errorResponse('Failed to create machine', 500, error.message));
+  if (!name || !price_per_kg || !turnaround_days) {
+    return res.status(400).json({ error: 'Field wajib diisi' });
   }
-});
 
-// Update machine
-app.put('/api/machines/:machineId', async (req, res) => {
-  try {
-    const machineId = parseInt(req.params.machineId);
-    const updates = req.body;
+  const service_id = `SVC-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
 
-    const updateFields = [];
-    const values = [];
+  const result = await db.execute({
+    sql: `INSERT INTO services 
+          (service_id, name, price_per_kg, turnaround_days, description, active)
+          VALUES (?, ?, ?, ?, ?, ?)`,
+    args: [
+      service_id,
+      name,
+      price_per_kg,
+      turnaround_days,
+      description || '',
+      active !== false ? 1 : 0
+    ]
+  });
 
-    for (const [key, value] of Object.entries(updates)) {
-      if (key !== 'id' && key !== 'machine_id' && key !== 'branch_id') {
-        updateFields.push(`${key} = ?`);
-        values.push(value);
-      }
+  res.status(201).json({
+    message: 'Layanan berhasil dibuat',
+    service_id: result.lastInsertRowid,
+    svc_id: service_id
+  });
+}));
+
+// Update service
+app.put('/api/services/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const { name, price_per_kg, turnaround_days, description, active } = req.body;
+
+  const result = await db.execute({
+    sql: 'SELECT * FROM services WHERE id = ?',
+    args: [req.params.id]
+  });
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ error: 'Layanan tidak ditemukan' });
+  }
+
+  const service = result.rows[0];
+
+  await db.execute({
+    sql: `UPDATE services 
+          SET name = ?, price_per_kg = ?, turnaround_days = ?, description = ?, active = ?, updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?`,
+    args: [
+      name || service.name,
+      price_per_kg !== undefined ? price_per_kg : service.price_per_kg,
+      turnaround_days !== undefined ? turnaround_days : service.turnaround_days,
+      description !== undefined ? description : service.description,
+      active !== undefined ? (active ? 1 : 0) : service.active,
+      req.params.id
+    ]
+  });
+
+  res.json({ message: 'Layanan berhasil diperbarui' });
+}));
+
+// Delete service
+app.delete('/api/services/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.execute({
+    sql: 'SELECT * FROM services WHERE id = ?',
+    args: [req.params.id]
+  });
+
+  if (result.rows.length === 0) {
+    return res.status(404).json({ error: 'Layanan tidak ditemukan' });
+  }
+
+  await db.execute({
+    sql: 'DELETE FROM services WHERE id = ?',
+    args: [req.params.id]
+  });
+
+  res.json({ message: 'Layanan berhasil dihapus' });
+}));
+
+// ============ PAYMENTS ROUTES ============
+
+// Get all payments with pagination
+app.get('/api/payments', authMiddleware, asyncHandler(async (req, res) => {
+  const { page = 1, limit = 10, status, order_id } = req.query;
+  const offset = (page - 1) * limit;
+
+  let query = 'SELECT * FROM payments WHERE 1=1';
+  const args = [];
+
+  if (status) {
+    query += ' AND status = ?';
+    args.push(status);
+  }
+
+  if (order_id) {
+    query += ' AND order_id = ?';
+    args.push(order_id);
+  }
+
+  query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  args.push(limit, offset);
+
+  const result = await db.execute({ sql: query, args });
+  
+  const countResult = await db.execute({
+    sql: 'SELECT COUNT(*) as total FROM payments'
+  });
+
+  const total = countResult.rows[0].total;
+
+  res.json({
+    data: result.rows,
+    pagination: {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      total,
+      pages: Math.ceil(total / limit)
     }
+  });
+}));
 
-    if (updateFields.length === 0) {
-      return res.status(400).json(errorResponse('No fields to update', 400));
-    }
+// Get single payment
+app.get('/api/payments/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const result = await db.execute({
+    sql: 'SELECT * FROM payments WHERE id = ?',
+    args: [req.params.id]
+  });
 
-    updateFields.push('updated_at = CURRENT_TIMESTAMP');
-    values.push(machineId, req.branchId);
+  if (result.rows.length === 0) {
+    return res.status(404).json({ error: 'Pembayaran tidak ditemukan' });
+  }
 
-    const result = await db.execute({
+  res.json(
