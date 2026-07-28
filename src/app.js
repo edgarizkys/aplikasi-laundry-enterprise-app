@@ -1,729 +1,998 @@
-import express from 'express';
-import cors from 'cors';
-import dotenv from 'dotenv';
-import { createClient } from '@libsql/client';
-import path from 'path';
-import { fileURLToPath } from 'url';
+I'll generate a production-ready Express.js backend for the Laundry Enterprise application. This will be comprehensive with proper error handling, database setup, and multi-tenant support.
 
-dotenv.config();
+Let me start with the main app.js file (chunked due to size):
+<function_calls>
+<invoke name="write_to_file">
+<parameter name="path">app.js</parameter>
+<parameter name="contents">require('dotenv').config();
+const express = require('express');
+const cors = require('cors');
+const helmet = require('helmet');
+const morgan = require('morgan');
+const path = require('path');
+const { createClient } = require('@libsql/client');
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
+// Initialize Express App
 const app = express();
 
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
-
-// Database Configuration
-const db = createClient({
-  url: process.env.TURSO_CONNECTION_URL || 'file:laundry.db',
-  authToken: process.env.TURSO_AUTH_TOKEN,
-});
+// Database Client
+let db = null;
 
 // Initialize Database
-async function initializeDatabase() {
+const initializeDatabase = async () => {
   try {
-    // Orders Table
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS orders (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        order_number TEXT UNIQUE NOT NULL,
-        customer_id TEXT NOT NULL,
-        customer_name TEXT NOT NULL,
-        phone TEXT NOT NULL,
-        items_description TEXT NOT NULL,
-        total_items INTEGER NOT NULL,
-        weight_kg REAL NOT NULL,
-        service_type TEXT NOT NULL,
-        total_price REAL NOT NULL,
-        status TEXT NOT NULL DEFAULT 'pending',
-        pickup_date DATE NOT NULL,
-        delivery_date DATE NOT NULL,
-        payment_status TEXT NOT NULL DEFAULT 'unpaid',
-        notes TEXT,
-        branch_id TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+    db = createClient({
+      url: process.env.TURSO_CONNECTION_URL,
+      authToken: process.env.TURSO_AUTH_TOKEN,
+    });
 
-    // Customers Table
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS customers (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        customer_id TEXT UNIQUE NOT NULL,
-        name TEXT NOT NULL,
-        phone TEXT NOT NULL,
-        email TEXT,
-        address TEXT NOT NULL,
-        city TEXT NOT NULL,
-        loyalty_points INTEGER DEFAULT 0,
-        total_orders INTEGER DEFAULT 0,
-        registration_date DATE NOT NULL,
-        tenant_id TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
+    // Test connection
+    await db.execute('SELECT 1');
+    console.log('✓ Database connected');
 
-    // Employees Table
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS employees (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        employee_id TEXT UNIQUE NOT NULL,
-        name TEXT NOT NULL,
-        position TEXT NOT NULL,
-        phone TEXT NOT NULL,
-        email TEXT NOT NULL,
-        hire_date DATE NOT NULL,
-        salary REAL NOT NULL,
-        status TEXT NOT NULL DEFAULT 'active',
-        branch_id TEXT,
-        tenant_id TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Branches Table
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS branches (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        branch_id TEXT UNIQUE NOT NULL,
-        name TEXT NOT NULL,
-        address TEXT NOT NULL,
-        city TEXT NOT NULL,
-        phone TEXT NOT NULL,
-        manager_name TEXT,
-        operating_hours TEXT NOT NULL,
-        tenant_id TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Services Table
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS services (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        service_id TEXT UNIQUE NOT NULL,
-        name TEXT NOT NULL,
-        description TEXT NOT NULL,
-        price_per_kg REAL NOT NULL,
-        turnaround_days INTEGER NOT NULL,
-        status TEXT NOT NULL DEFAULT 'active',
-        tenant_id TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Payments Table
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS payments (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        payment_id TEXT UNIQUE NOT NULL,
-        order_id TEXT NOT NULL,
-        customer_name TEXT NOT NULL,
-        amount REAL NOT NULL,
-        payment_method TEXT NOT NULL,
-        payment_date DATE NOT NULL,
-        status TEXT NOT NULL DEFAULT 'pending',
-        tenant_id TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    console.log('Database initialized successfully');
+    // Create tables
+    await createTables();
   } catch (error) {
-    console.error('Database initialization error:', error);
+    console.error('✗ Database connection failed:', error.message);
+    process.exit(1);
   }
-}
+};
 
-// Utility Functions
-function generateId(prefix) {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-}
+// Create Database Tables
+const createTables = async () => {
+  const tables = [
+    `CREATE TABLE IF NOT EXISTS tenants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT,
+      address TEXT,
+      city TEXT,
+      plan TEXT DEFAULT 'basic',
+      status TEXT DEFAULT 'active',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )`,
 
-async function seedDatabase() {
-  try {
-    const existingOrders = await db.execute('SELECT COUNT(*) as count FROM orders');
-    if (existingOrders.rows.length > 0 && existingOrders.rows[0].count > 0) {
-      console.log('Database already seeded');
-      return;
+    `CREATE TABLE IF NOT EXISTS branches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id TEXT NOT NULL,
+      branch_id TEXT UNIQUE NOT NULL,
+      branch_name TEXT NOT NULL,
+      address TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      manager_name TEXT,
+      capacity REAL DEFAULT 500,
+      opening_hours TEXT,
+      status TEXT DEFAULT 'active',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id)
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS services (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id TEXT NOT NULL,
+      service_id TEXT UNIQUE NOT NULL,
+      service_name TEXT NOT NULL,
+      description TEXT,
+      price_per_kg REAL NOT NULL,
+      turnaround_time INTEGER DEFAULT 3,
+      is_active BOOLEAN DEFAULT 1,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id)
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS customers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id TEXT NOT NULL,
+      customer_id TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      email TEXT,
+      address TEXT,
+      city TEXT,
+      member_type TEXT DEFAULT 'regular',
+      points INTEGER DEFAULT 0,
+      total_orders INTEGER DEFAULT 0,
+      total_spent REAL DEFAULT 0,
+      join_date DATE NOT NULL,
+      status TEXT DEFAULT 'active',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id)
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS staff (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id TEXT NOT NULL,
+      staff_id TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      role TEXT NOT NULL,
+      branch_id TEXT NOT NULL,
+      salary REAL NOT NULL,
+      join_date DATE NOT NULL,
+      status TEXT DEFAULT 'active',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
+      FOREIGN KEY (branch_id) REFERENCES branches(branch_id)
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS orders (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id TEXT NOT NULL,
+      order_id TEXT UNIQUE NOT NULL,
+      customer_name TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      email TEXT,
+      items TEXT NOT NULL,
+      weight_kg REAL NOT NULL,
+      service_type TEXT NOT NULL,
+      unit_price REAL NOT NULL,
+      total_price REAL NOT NULL,
+      status TEXT DEFAULT 'pending',
+      pickup_date DATE NOT NULL,
+      delivery_date DATE,
+      branch_id TEXT NOT NULL,
+      assigned_staff TEXT,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
+      FOREIGN KEY (branch_id) REFERENCES branches(branch_id)
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS payments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id TEXT NOT NULL,
+      payment_id TEXT UNIQUE NOT NULL,
+      order_id TEXT NOT NULL,
+      amount REAL NOT NULL,
+      payment_method TEXT NOT NULL,
+      status TEXT DEFAULT 'pending',
+      payment_date DATE,
+      reference_id TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
+      FOREIGN KEY (order_id) REFERENCES orders(order_id)
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS loyalty_transactions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id TEXT NOT NULL,
+      customer_id TEXT NOT NULL,
+      order_id TEXT,
+      points_amount INTEGER NOT NULL,
+      transaction_type TEXT NOT NULL,
+      description TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
+      FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS inventory (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id TEXT NOT NULL,
+      branch_id TEXT NOT NULL,
+      item_name TEXT NOT NULL,
+      quantity INTEGER DEFAULT 0,
+      unit TEXT,
+      reorder_level INTEGER DEFAULT 10,
+      last_restocked DATE,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (tenant_id) REFERENCES tenants(tenant_id),
+      FOREIGN KEY (branch_id) REFERENCES branches(branch_id)
+    )`
+  ];
+
+  for (const table of tables) {
+    try {
+      await db.execute(table);
+    } catch (error) {
+      if (!error.message.includes('already exists')) {
+        console.error('Table creation error:', error.message);
+      }
     }
-
-    // Seed Branches
-    await db.execute(`
-      INSERT INTO branches (branch_id, name, address, city, phone, manager_name, operating_hours, tenant_id)
-      VALUES 
-        ('BR-001', 'Pusat Jakarta', 'Jl. Gatot Subroto No. 1', 'Jakarta', '0213456789', 'Ahmad Wijaya', '07:00 - 21:00', 'default'),
-        ('BR-002', 'Cabang Depok', 'Jl. Margonda No. 50', 'Depok', '0217654321', 'Rina Pratama', '08:00 - 20:00', 'default')
-    `);
-
-    // Seed Services
-    await db.execute(`
-      INSERT INTO services (service_id, name, description, price_per_kg, turnaround_days, status, tenant_id)
-      VALUES 
-        ('SRV-001', 'Regular', 'Layanan pencucian standar 2-3 hari', 15000, 3, 'active', 'default'),
-        ('SRV-002', 'Express', 'Layanan kilat 1 hari', 25000, 1, 'active', 'default'),
-        ('SRV-003', 'Premium', 'Layanan premium dengan setrika profesional', 35000, 2, 'active', 'default')
-    `);
-
-    // Seed Customers
-    await db.execute(`
-      INSERT INTO customers (customer_id, name, phone, email, address, city, loyalty_points, total_orders, registration_date, tenant_id)
-      VALUES 
-        ('CUST-001', 'Budi Santoso', '081234567890', 'budi@email.com', 'Jl. Merdeka No. 10', 'Jakarta', 250, 15, '2025-12-01', 'default'),
-        ('CUST-002', 'Siti Nurhaliza', '082345678901', 'siti@email.com', 'Jl. Sudirman No. 25', 'Jakarta', 180, 10, '2026-02-15', 'default'),
-        ('CUST-003', 'Rudi Hermawan', '083456789012', 'rudi@email.com', 'Jl. Diponegoro No. 5', 'Depok', 120, 7, '2026-03-20', 'default')
-    `);
-
-    // Seed Employees
-    await db.execute(`
-      INSERT INTO employees (employee_id, name, position, phone, email, hire_date, salary, status, branch_id, tenant_id)
-      VALUES 
-        ('EMP-001', 'Ahmad Wijaya', 'Manager', '083456789012', 'ahmad@laundry.com', '2023-01-10', 5000000, 'active', 'BR-001', 'default'),
-        ('EMP-002', 'Dewi Lestari', 'Operator', '084567890123', 'dewi@laundry.com', '2024-06-15', 2500000, 'active', 'BR-001', 'default'),
-        ('EMP-003', 'Rina Pratama', 'Manager', '085678901234', 'rina@laundry.com', '2023-06-01', 4500000, 'active', 'BR-002', 'default')
-    `);
-
-    // Seed Orders
-    await db.execute(`
-      INSERT INTO orders (order_number, customer_id, customer_name, phone, items_description, total_items, weight_kg, service_type, total_price, status, pickup_date, delivery_date, payment_status, notes, branch_id)
-      VALUES 
-        ('ORD-2026-0001', 'CUST-001', 'Budi Santoso', '081234567890', 'Baju, Celana, Jas', 5, 4.2, 'Regular', 63000, 'processing', '2026-07-28', '2026-07-30', 'paid', 'Hati-hati dengan kain sutra', 'BR-001'),
-        ('ORD-2026-0002', 'CUST-002', 'Siti Nurhaliza', '082345678901', 'Kemeja, Rok, Daster', 8, 3.8, 'Express', 95000, 'ready', '2026-07-27', '2026-07-28', 'paid', 'Pengiriman ke rumah', 'BR-001'),
-        ('ORD-2026-0003', 'CUST-003', 'Rudi Hermawan', '083456789012', 'Jaket, Celana panjang', 3, 2.5, 'Premium', 87500, 'completed', '2026-07-26', '2026-07-28', 'paid', '', 'BR-002')
-    `);
-
-    // Seed Payments
-    await db.execute(`
-      INSERT INTO payments (payment_id, order_id, customer_name, amount, payment_method, payment_date, status, tenant_id)
-      VALUES 
-        ('PAY-001', 'ORD-2026-0001', 'Budi Santoso', 63000, 'QRIS', '2026-07-28', 'completed', 'default'),
-        ('PAY-002', 'ORD-2026-0002', 'Siti Nurhaliza', 95000, 'Transfer Bank', '2026-07-27', 'completed', 'default'),
-        ('PAY-003', 'ORD-2026-0003', 'Rudi Hermawan', 87500, 'Cash', '2026-07-26', 'completed', 'default')
-    `);
-
-    console.log('Database seeded successfully');
-  } catch (error) {
-    console.error('Database seeding error:', error);
   }
-}
+};
 
-// ORDERS ENDPOINTS
-app.get('/api/orders', async (req, res) => {
+// Middleware
+app.use(helmet());
+app.use(cors());
+app.use(morgan('combined'));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Tenant Context Middleware
+app.use((req, res, next) => {
+  const tenantId = req.headers['x-tenant-id'] || req.query.tenant_id;
+  
+  if (!tenantId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Tenant ID is required',
+      error: 'MISSING_TENANT_ID'
+    });
+  }
+
+  req.tenantId = tenantId;
+  next();
+});
+
+// Error Handler Middleware
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || 'Internal Server Error',
+    error: err.code || 'INTERNAL_ERROR'
+  });
+});
+
+// Helper: Generate ID
+const generateId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+// Helper: Paginate
+const paginate = (page = 1, limit = 10) => {
+  const p = Math.max(1, parseInt(page));
+  const l = Math.min(100, Math.max(1, parseInt(limit)));
+  const offset = (p - 1) * l;
+  return { offset, limit: l, page: p };
+};
+
+// ========== BRANCHES ENDPOINTS ==========
+
+// Get all branches
+app.get('/api/branches', async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = (page - 1) * limit;
-    const status = req.query.status;
-    const tenantId = req.query.tenant_id || 'default';
+    const { page, limit } = req.query;
+    const { offset, limit: l, page: p } = paginate(page, limit);
 
-    let query = 'SELECT * FROM orders WHERE tenant_id = ? OR tenant_id IS NULL';
-    let countQuery = 'SELECT COUNT(*) as total FROM orders WHERE tenant_id = ? OR tenant_id IS NULL';
-    const params = [tenantId];
-
-    if (status) {
-      query += ' AND status = ?';
-      countQuery += ' AND status = ?';
-      params.push(status);
-    }
-
-    query += ` ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
-
-    const orders = await db.execute(query, params);
-    const countResult = await db.execute(countQuery, params);
+    const countResult = await db.execute(
+      'SELECT COUNT(*) as total FROM branches WHERE tenant_id = ?',
+      [req.tenantId]
+    );
     const total = countResult.rows[0].total;
 
+    const result = await db.execute(
+      'SELECT * FROM branches WHERE tenant_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ?',
+      [req.tenantId, l, offset]
+    );
+
     res.json({
-      data: orders.rows,
+      success: true,
+      data: result.rows,
       pagination: {
-        page,
-        limit,
+        page: p,
+        limit: l,
         total,
-        pages: Math.ceil(total / limit),
-      },
+        pages: Math.ceil(total / l)
+      }
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      error: 'FETCH_BRANCHES_ERROR'
+    });
   }
 });
 
-app.get('/api/orders/:id', async (req, res) => {
+// Get single branch
+app.get('/api/branches/:branchId', async (req, res) => {
   try {
-    const result = await db.execute('SELECT * FROM orders WHERE id = ?', [req.params.id]);
+    const result = await db.execute(
+      'SELECT * FROM branches WHERE tenant_id = ? AND branch_id = ?',
+      [req.tenantId, req.params.branchId]
+    );
+
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Pesanan tidak ditemukan' });
+      return res.status(404).json({
+        success: false,
+        message: 'Branch not found',
+        error: 'BRANCH_NOT_FOUND'
+      });
     }
-    res.json(result.rows[0]);
+
+    res.json({
+      success: true,
+      data: result.rows[0]
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      error: 'FETCH_BRANCH_ERROR'
+    });
   }
 });
 
-app.post('/api/orders', async (req, res) => {
+// Create branch
+app.post('/api/branches', async (req, res) => {
   try {
     const {
-      customer_id,
-      customer_name,
+      branch_name,
+      address,
       phone,
-      items_description,
-      total_items,
-      weight_kg,
-      service_type,
-      total_price,
-      pickup_date,
-      delivery_date,
-      notes,
-      branch_id,
+      manager_name,
+      capacity,
+      opening_hours,
+      status
     } = req.body;
 
-    const order_number = `ORD-${new Date().getFullYear()}-${Math.random().toString().slice(2, 7).padStart(5, '0')}`;
-    const tenantId = req.body.tenant_id || 'default';
+    if (!branch_name || !address || !phone) {
+      return res.status(400).json({
+        success: false,
+        message: 'Required fields missing',
+        error: 'VALIDATION_ERROR'
+      });
+    }
 
-    const result = await db.execute(
-      `INSERT INTO orders (order_number, customer_id, customer_name, phone, items_description, total_items, weight_kg, service_type, total_price, status, pickup_date, delivery_date, notes, branch_id, tenant_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [order_number, customer_id, customer_name, phone, items_description, total_items, weight_kg, service_type, total_price, 'pending', pickup_date, delivery_date, notes || '', branch_id || '', tenantId]
+    const branchId = generateId('BR');
+
+    await db.execute(
+      `INSERT INTO branches (
+        tenant_id, branch_id, branch_name, address, phone, manager_name, 
+        capacity, opening_hours, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        req.tenantId,
+        branchId,
+        branch_name,
+        address,
+        phone,
+        manager_name || null,
+        capacity || 500,
+        opening_hours || null,
+        status || 'active'
+      ]
     );
 
     res.status(201).json({
-      id: result.lastInsertRowid,
-      order_number,
-      message: 'Pesanan berhasil dibuat',
+      success: true,
+      message: 'Branch created successfully',
+      data: { branch_id: branchId }
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.put('/api/orders/:id', async (req, res) => {
-  try {
-    const { status, payment_status, notes, total_price } = req.body;
-
-    let updateQuery = 'UPDATE orders SET updated_at = CURRENT_TIMESTAMP';
-    const params = [];
-
-    if (status) {
-      updateQuery += ', status = ?';
-      params.push(status);
-    }
-    if (payment_status) {
-      updateQuery += ', payment_status = ?';
-      params.push(payment_status);
-    }
-    if (notes !== undefined) {
-      updateQuery += ', notes = ?';
-      params.push(notes);
-    }
-    if (total_price) {
-      updateQuery += ', total_price = ?';
-      params.push(total_price);
-    }
-
-    updateQuery += ' WHERE id = ?';
-    params.push(req.params.id);
-
-    await db.execute(updateQuery, params);
-    res.json({ message: 'Pesanan berhasil diperbarui' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.delete('/api/orders/:id', async (req, res) => {
-  try {
-    await db.execute('DELETE FROM orders WHERE id = ?', [req.params.id]);
-    res.json({ message: 'Pesanan berhasil dihapus' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// CUSTOMERS ENDPOINTS
-app.get('/api/customers', async (req, res) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = (page - 1) * limit;
-    const tenantId = req.query.tenant_id || 'default';
-
-    const customers = await db.execute(
-      `SELECT * FROM customers WHERE tenant_id = ? OR tenant_id IS NULL ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-      [tenantId, limit, offset]
-    );
-
-    const countResult = await db.execute(
-      'SELECT COUNT(*) as total FROM customers WHERE tenant_id = ? OR tenant_id IS NULL',
-      [tenantId]
-    );
-    const total = countResult.rows[0].total;
-
-    res.json({
-      data: customers.rows,
-      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      error: 'CREATE_BRANCH_ERROR'
     });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
   }
 });
 
-app.get('/api/customers/:id', async (req, res) => {
+// Update branch
+app.put('/api/branches/:branchId', async (req, res) => {
   try {
-    const result = await db.execute('SELECT * FROM customers WHERE id = ?', [req.params.id]);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Pelanggan tidak ditemukan' });
-    }
-    res.json(result.rows[0]);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post('/api/customers', async (req, res) => {
-  try {
-    const { name, phone, email, address, city, registration_date } = req.body;
-    const customer_id = `CUST-${Math.random().toString().slice(2, 6)}`;
-    const tenantId = req.body.tenant_id || 'default';
+    const { branch_name, address, phone, manager_name, capacity, opening_hours, status } = req.body;
 
     const result = await db.execute(
-      `INSERT INTO customers (customer_id, name, phone, email, address, city, registration_date, tenant_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [customer_id, name, phone, email || '', address, city, registration_date || new Date().toISOString().split('T')[0], tenantId]
+      'SELECT * FROM branches WHERE tenant_id = ? AND branch_id = ?',
+      [req.tenantId, req.params.branchId]
     );
 
-    res.status(201).json({ id: result.lastInsertRowid, customer_id, message: 'Pelanggan berhasil ditambahkan' });
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Branch not found',
+        error: 'BRANCH_NOT_FOUND'
+      });
+    }
+
+    await db.execute(
+      `UPDATE branches SET 
+        branch_name = COALESCE(?, branch_name),
+        address = COALESCE(?, address),
+        phone = COALESCE(?, phone),
+        manager_name = COALESCE(?, manager_name),
+        capacity = COALESCE(?, capacity),
+        opening_hours = COALESCE(?, opening_hours),
+        status = COALESCE(?, status),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE tenant_id = ? AND branch_id = ?`,
+      [
+        branch_name || null,
+        address || null,
+        phone || null,
+        manager_name || null,
+        capacity || null,
+        opening_hours || null,
+        status || null,
+        req.tenantId,
+        req.params.branchId
+      ]
+    );
+
+    res.json({
+      success: true,
+      message: 'Branch updated successfully'
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      error: 'UPDATE_BRANCH_ERROR'
+    });
   }
 });
 
-app.put('/api/customers/:id', async (req, res) => {
+// Delete branch
+app.delete('/api/branches/:branchId', async (req, res) => {
   try {
-    const { name, phone, email, address, city, loyalty_points } = req.body;
+    const result = await db.execute(
+      'SELECT * FROM branches WHERE tenant_id = ? AND branch_id = ?',
+      [req.tenantId, req.params.branchId]
+    );
 
-    let updateQuery = 'UPDATE customers SET updated_at = CURRENT_TIMESTAMP';
-    const params = [];
-
-    if (name) {
-      updateQuery += ', name = ?';
-      params.push(name);
-    }
-    if (phone) {
-      updateQuery += ', phone = ?';
-      params.push(phone);
-    }
-    if (email) {
-      updateQuery += ', email = ?';
-      params.push(email);
-    }
-    if (address) {
-      updateQuery += ', address = ?';
-      params.push(address);
-    }
-    if (city) {
-      updateQuery += ', city = ?';
-      params.push(city);
-    }
-    if (loyalty_points !== undefined) {
-      updateQuery += ', loyalty_points = ?';
-      params.push(loyalty_points);
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Branch not found',
+        error: 'BRANCH_NOT_FOUND'
+      });
     }
 
-    updateQuery += ' WHERE id = ?';
-    params.push(req.params.id);
+    await db.execute(
+      'DELETE FROM branches WHERE tenant_id = ? AND branch_id = ?',
+      [req.tenantId, req.params.branchId]
+    );
 
-    await db.execute(updateQuery, params);
-    res.json({ message: 'Pelanggan berhasil diperbarui' });
+    res.json({
+      success: true,
+      message: 'Branch deleted successfully'
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      error: 'DELETE_BRANCH_ERROR'
+    });
   }
 });
 
-app.delete('/api/customers/:id', async (req, res) => {
+// ========== SERVICES ENDPOINTS ==========
+
+// Get all services
+app.get('/api/services', async (req, res) => {
   try {
-    await db.execute('DELETE FROM customers WHERE id = ?', [req.params.id]);
-    res.json({ message: 'Pelanggan berhasil dihapus' });
+    const { page, limit, is_active } = req.query;
+    const { offset, limit: l, page: p } = paginate(page, limit);
+
+    let query = 'SELECT COUNT(*) as total FROM services WHERE tenant_id = ?';
+    let params = [req.tenantId];
+
+    if (is_active !== undefined) {
+      query += ' AND is_active = ?';
+      params.push(is_active === 'true' ? 1 : 0);
+    }
+
+    const countResult = await db.execute(query, params);
+    const total = countResult.rows[0].total;
+
+    query = 'SELECT * FROM services WHERE tenant_id = ?';
+    params = [req.tenantId];
+
+    if (is_active !== undefined) {
+      query += ' AND is_active = ?';
+      params.push(is_active === 'true' ? 1 : 0);
+    }
+
+    query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    params.push(l, offset);
+
+    const result = await db.execute(query, params);
+
+    res.json({
+      success: true,
+      data: result.rows,
+      pagination: {
+        page: p,
+        limit: l,
+        total,
+        pages: Math.ceil(total / l)
+      }
+    });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      error: 'FETCH_SERVICES_ERROR'
+    });
   }
 });
 
-// EMPLOYEES ENDPOINTS
-app.get('/api/employees', async (req, res) => {
+// Get single service
+app.get('/api/services/:serviceId', async (req, res) => {
   try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = (page - 1) * limit;
-    const branch_id = req.query.branch_id;
-    const tenantId = req.query.tenant_id || 'default';
+    const result = await db.execute(
+      'SELECT * FROM services WHERE tenant_id = ? AND service_id = ?',
+      [req.tenantId, req.params.serviceId]
+    );
 
-    let query = 'SELECT * FROM employees WHERE tenant_id = ? OR tenant_id IS NULL';
-    let countQuery = 'SELECT COUNT(*) as total FROM employees WHERE tenant_id = ? OR tenant_id IS NULL';
-    const params = [tenantId];
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Service not found',
+        error: 'SERVICE_NOT_FOUND'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: result.rows[0]
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      error: 'FETCH_SERVICE_ERROR'
+    });
+  }
+});
+
+// Create service
+app.post('/api/services', async (req, res) => {
+  try {
+    const { service_name, description, price_per_kg, turnaround_time, is_active } = req.body;
+
+    if (!service_name || price_per_kg === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'Required fields missing',
+        error: 'VALIDATION_ERROR'
+      });
+    }
+
+    const serviceId = generateId('SVC');
+
+    await db.execute(
+      `INSERT INTO services (
+        tenant_id, service_id, service_name, description, price_per_kg, 
+        turnaround_time, is_active
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        req.tenantId,
+        serviceId,
+        service_name,
+        description || null,
+        price_per_kg,
+        turnaround_time || 3,
+        is_active !== false ? 1 : 0
+      ]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Service created successfully',
+      data: { service_id: serviceId }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      error: 'CREATE_SERVICE_ERROR'
+    });
+  }
+});
+
+// Update service
+app.put('/api/services/:serviceId', async (req, res) => {
+  try {
+    const { service_name, description, price_per_kg, turnaround_time, is_active } = req.body;
+
+    const result = await db.execute(
+      'SELECT * FROM services WHERE tenant_id = ? AND service_id = ?',
+      [req.tenantId, req.params.serviceId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Service not found',
+        error: 'SERVICE_NOT_FOUND'
+      });
+    }
+
+    await db.execute(
+      `UPDATE services SET 
+        service_name = COALESCE(?, service_name),
+        description = COALESCE(?, description),
+        price_per_kg = COALESCE(?, price_per_kg),
+        turnaround_time = COALESCE(?, turnaround_time),
+        is_active = COALESCE(?, is_active),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE tenant_id = ? AND service_id = ?`,
+      [
+        service_name || null,
+        description || null,
+        price_per_kg !== undefined ? price_per_kg : null,
+        turnaround_time || null,
+        is_active !== undefined ? (is_active ? 1 : 0) : null,
+        req.tenantId,
+        req.params.serviceId
+      ]
+    );
+
+    res.json({
+      success: true,
+      message: 'Service updated successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      error: 'UPDATE_SERVICE_ERROR'
+    });
+  }
+});
+
+// Delete service
+app.delete('/api/services/:serviceId', async (req, res) => {
+  try {
+    const result = await db.execute(
+      'SELECT * FROM services WHERE tenant_id = ? AND service_id = ?',
+      [req.tenantId, req.params.serviceId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Service not found',
+        error: 'SERVICE_NOT_FOUND'
+      });
+    }
+
+    await db.execute(
+      'DELETE FROM services WHERE tenant_id = ? AND service_id = ?',
+      [req.tenantId, req.params.serviceId]
+    );
+
+    res.json({
+      success: true,
+      message: 'Service deleted successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      error: 'DELETE_SERVICE_ERROR'
+    });
+  }
+});
+
+// ========== CUSTOMERS ENDPOINTS ==========
+
+// Get all customers
+app.get('/api/customers', async (req, res) => {
+  try {
+    const { page, limit, member_type, status } = req.query;
+    const { offset, limit: l, page: p } = paginate(page, limit);
+
+    let query = 'SELECT COUNT(*) as total FROM customers WHERE tenant_id = ?';
+    let params = [req.tenantId];
+
+    if (member_type) {
+      query += ' AND member_type = ?';
+      params.push(member_type);
+    }
+
+    if (status) {
+      query += ' AND status = ?';
+      params.push(status);
+    }
+
+    const countResult = await db.execute(query, params);
+    const total = countResult.rows[0].total;
+
+    query = 'SELECT * FROM customers WHERE tenant_id = ?';
+    params = [req.tenantId];
+
+    if (member_type) {
+      query += ' AND member_type = ?';
+      params.push(member_type);
+    }
+
+    if (status) {
+      query += ' AND status = ?';
+      params.push(status);
+    }
+
+    query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    params.push(l, offset);
+
+    const result = await db.execute(query, params);
+
+    res.json({
+      success: true,
+      data: result.rows,
+      pagination: {
+        page: p,
+        limit: l,
+        total,
+        pages: Math.ceil(total / l)
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      error: 'FETCH_CUSTOMERS_ERROR'
+    });
+  }
+});
+
+// Get single customer
+app.get('/api/customers/:customerId', async (req, res) => {
+  try {
+    const result = await db.execute(
+      'SELECT * FROM customers WHERE tenant_id = ? AND customer_id = ?',
+      [req.tenantId, req.params.customerId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Customer not found',
+        error: 'CUSTOMER_NOT_FOUND'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: result.rows[0]
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      error: 'FETCH_CUSTOMER_ERROR'
+    });
+  }
+});
+
+// Create customer
+app.post('/api/customers', async (req, res) => {
+  try {
+    const { name, phone, email, address, city, member_type } = req.body;
+
+    if (!name || !phone) {
+      return res.status(400).json({
+        success: false,
+        message: 'Required fields missing',
+        error: 'VALIDATION_ERROR'
+      });
+    }
+
+    const customerId = generateId('CUST');
+    const joinDate = new Date().toISOString().split('T')[0];
+
+    await db.execute(
+      `INSERT INTO customers (
+        tenant_id, customer_id, name, phone, email, address, city, 
+        member_type, join_date
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        req.tenantId,
+        customerId,
+        name,
+        phone,
+        email || null,
+        address || null,
+        city || null,
+        member_type || 'regular',
+        joinDate
+      ]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Customer created successfully',
+      data: { customer_id: customerId }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      error: 'CREATE_CUSTOMER_ERROR'
+    });
+  }
+});
+
+// Update customer
+app.put('/api/customers/:customerId', async (req, res) => {
+  try {
+    const { name, phone, email, address, city, member_type, status } = req.body;
+
+    const result = await db.execute(
+      'SELECT * FROM customers WHERE tenant_id = ? AND customer_id = ?',
+      [req.tenantId, req.params.customerId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Customer not found',
+        error: 'CUSTOMER_NOT_FOUND'
+      });
+    }
+
+    await db.execute(
+      `UPDATE customers SET 
+        name = COALESCE(?, name),
+        phone = COALESCE(?, phone),
+        email = COALESCE(?, email),
+        address = COALESCE(?, address),
+        city = COALESCE(?, city),
+        member_type = COALESCE(?, member_type),
+        status = COALESCE(?, status),
+        updated_at = CURRENT_TIMESTAMP
+      WHERE tenant_id = ? AND customer_id = ?`,
+      [
+        name || null,
+        phone || null,
+        email || null,
+        address || null,
+        city || null,
+        member_type || null,
+        status || null,
+        req.tenantId,
+        req.params.customerId
+      ]
+    );
+
+    res.json({
+      success: true,
+      message: 'Customer updated successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      error: 'UPDATE_CUSTOMER_ERROR'
+    });
+  }
+});
+
+// Delete customer
+app.delete('/api/customers/:customerId', async (req, res) => {
+  try {
+    const result = await db.execute(
+      'SELECT * FROM customers WHERE tenant_id = ? AND customer_id = ?',
+      [req.tenantId, req.params.customerId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Customer not found',
+        error: 'CUSTOMER_NOT_FOUND'
+      });
+    }
+
+    await db.execute(
+      'DELETE FROM customers WHERE tenant_id = ? AND customer_id = ?',
+      [req.tenantId, req.params.customerId]
+    );
+
+    res.json({
+      success: true,
+      message: 'Customer deleted successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      error: 'DELETE_CUSTOMER_ERROR'
+    });
+  }
+});
+
+// ========== STAFF ENDPOINTS ==========
+
+// Get all staff
+app.get('/api/staff', async (req, res) => {
+  try {
+    const { page, limit, role, branch_id, status } = req.query;
+    const { offset, limit: l, page: p } = paginate(page, limit);
+
+    let query = 'SELECT COUNT(*) as total FROM staff WHERE tenant_id = ?';
+    let params = [req.tenantId];
+
+    if (role) {
+      query += ' AND role = ?';
+      params.push(role);
+    }
 
     if (branch_id) {
       query += ' AND branch_id = ?';
-      countQuery += ' AND branch_id = ?';
       params.push(branch_id);
     }
 
-    query += ` ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
-
-    const employees = await db.execute(query, params);
-    const countResult = await db.execute(countQuery, params);
-    const total = countResult.rows[0].total;
-
-    res.json({
-      data: employees.rows,
-      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.get('/api/employees/:id', async (req, res) => {
-  try {
-    const result = await db.execute('SELECT * FROM employees WHERE id = ?', [req.params.id]);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Karyawan tidak ditemukan' });
-    }
-    res.json(result.rows[0]);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post('/api/employees', async (req, res) => {
-  try {
-    const { name, position, phone, email, hire_date, salary, branch_id } = req.body;
-    const employee_id = `EMP-${Math.random().toString().slice(2, 6)}`;
-    const tenantId = req.body.tenant_id || 'default';
-
-    const result = await db.execute(
-      `INSERT INTO employees (employee_id, name, position, phone, email, hire_date, salary, status, branch_id, tenant_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [employee_id, name, position, phone, email, hire_date, salary, 'active', branch_id || '', tenantId]
-    );
-
-    res.status(201).json({ id: result.lastInsertRowid, employee_id, message: 'Karyawan berhasil ditambahkan' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.put('/api/employees/:id', async (req, res) => {
-  try {
-    const { name, position, phone, email, salary, status } = req.body;
-
-    let updateQuery = 'UPDATE employees SET updated_at = CURRENT_TIMESTAMP';
-    const params = [];
-
-    if (name) {
-      updateQuery += ', name = ?';
-      params.push(name);
-    }
-    if (position) {
-      updateQuery += ', position = ?';
-      params.push(position);
-    }
-    if (phone) {
-      updateQuery += ', phone = ?';
-      params.push(phone);
-    }
-    if (email) {
-      updateQuery += ', email = ?';
-      params.push(email);
-    }
-    if (salary) {
-      updateQuery += ', salary = ?';
-      params.push(salary);
-    }
     if (status) {
-      updateQuery += ', status = ?';
+      query += ' AND status = ?';
       params.push(status);
     }
 
-    updateQuery += ' WHERE id = ?';
-    params.push(req.params.id);
-
-    await db.execute(updateQuery, params);
-    res.json({ message: 'Karyawan berhasil diperbarui' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.delete('/api/employees/:id', async (req, res) => {
-  try {
-    await db.execute('DELETE FROM employees WHERE id = ?', [req.params.id]);
-    res.json({ message: 'Karyawan berhasil dihapus' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// BRANCHES ENDPOINTS
-app.get('/api/branches', async (req, res) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = (page - 1) * limit;
-    const tenantId = req.query.tenant_id || 'default';
-
-    const branches = await db.execute(
-      `SELECT * FROM branches WHERE tenant_id = ? OR tenant_id IS NULL ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-      [tenantId, limit, offset]
-    );
-
-    const countResult = await db.execute(
-      'SELECT COUNT(*) as total FROM branches WHERE tenant_id = ? OR tenant_id IS NULL',
-      [tenantId]
-    );
+    const countResult = await db.execute(query, params);
     const total = countResult.rows[0].total;
 
-    res.json({
-      data: branches.rows,
-      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+    query = 'SELECT * FROM staff WHERE tenant_id = ?';
+    params = [req.tenantId];
 
-app.get('/api/branches/:id', async (req, res) => {
-  try {
-    const result = await db.execute('SELECT * FROM branches WHERE id = ?', [req.params.id]);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Cabang tidak ditemukan' });
-    }
-    res.json(result.rows[0]);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post('/api/branches', async (req, res) => {
-  try {
-    const { name, address, city, phone, manager_name, operating_hours } = req.body;
-    const branch_id = `BR-${Math.random().toString().slice(2, 6)}`;
-    const tenantId = req.body.tenant_id || 'default';
-
-    const result = await db.execute(
-      `INSERT INTO branches (branch_id, name, address, city, phone, manager_name, operating_hours, tenant_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [branch_id, name, address, city, phone, manager_name || '', operating_hours, tenantId]
-    );
-
-    res.status(201).json({ id: result.lastInsertRowid, branch_id, message: 'Cabang berhasil ditambahkan' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.put('/api/branches/:id', async (req, res) => {
-  try {
-    const { name, address, city, phone, manager_name, operating_hours } = req.body;
-
-    let updateQuery = 'UPDATE branches SET updated_at = CURRENT_TIMESTAMP';
-    const params = [];
-
-    if (name) {
-      updateQuery += ', name = ?';
-      params.push(name);
-    }
-    if (address) {
-      updateQuery += ', address = ?';
-      params.push(address);
-    }
-    if (city) {
-      updateQuery += ', city = ?';
-      params.push(city);
-    }
-    if (phone) {
-      updateQuery += ', phone = ?';
-      params.push(phone);
-    }
-    if (manager_name) {
-      updateQuery += ', manager_name = ?';
-      params.push(manager_name);
-    }
-    if (operating_hours) {
-      updateQuery += ', operating_hours = ?';
-      params.push(operating_hours);
+    if (role) {
+      query += ' AND role = ?';
+      params.push(role);
     }
 
-    updateQuery += ' WHERE id = ?';
-    params.push(req.params.id);
+    if (branch_id) {
+      query += ' AND branch_id = ?';
+      params.push(branch_id);
+    }
 
-    await db.execute(updateQuery, params);
-    res.json({ message: 'Cabang berhasil diperbarui' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+    if (status) {
+      query += ' AND status = ?';
+      params.push(status);
+    }
 
-app.delete('/api/branches/:id', async (req, res) => {
-  try {
-    await db.execute('DELETE FROM branches WHERE id = ?', [req.params.id]);
-    res.json({ message: 'Cabang berhasil dihapus' });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+    query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+    params.push(l, offset);
 
-// SERVICES ENDPOINTS
-app.get('/api/services', async (req, res) => {
-  try {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = (page - 1) * limit;
-    const tenantId = req.query.tenant_id || 'default';
-
-    const services = await db.execute(
-      `SELECT * FROM services WHERE (tenant_id = ? OR tenant_id IS NULL) AND status = 'active' ORDER BY created_at DESC LIMIT ? OFFSET ?`,
-      [tenantId, limit, offset]
-    );
-
-    const countResult = await db.execute(
-      `SELECT COUNT(*) as total FROM services WHERE (tenant_id = ? OR tenant_id IS NULL) AND status = 'active'`,
-      [tenantId]
-    );
-    const total = countResult.rows[0].total;
+    const result = await db.execute(query, params);
 
     res.json({
-      data: services.rows,
-      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+      success: true,
+      data: result.rows,
+      pagination: {
+        page: p,
+        limit: l,
+        total,
+        pages: Math.ceil(total / l)
+      }
     });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      error: 'FETCH_STAFF_ERROR'
+    });
   }
 });
 
-app.get('/api/services/:id', async (req, res) => {
+// Get single staff member
+app.get('/api/staff/:staffId', async (req, res) => {
   try {
-    const result = await db.execute('SELECT * FROM services WHERE id = ?', [req.params.id]);
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Layanan tidak ditemukan' });
-    }
-    res.json(result.rows[0]);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post('/api/services', async (req, res) => {
-  try {
-    const { name, description, price_per_kg, turnaround_days } = req.body;
-    const service_id = `SRV-${Math.random().toString().slice(2, 6)}`;
-    const tenantId = req.body.tenant_id || 'default';
-
     const result = await db.execute(
-      `INSERT INTO services (service_id, name,
+      'SELECT * FROM staff WHERE tenant_id = ? AND staff_id = ?',
+      [req.tenantId, req.params.staffId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Staff member not found',
+        error: 'STAFF_NOT_FOUND'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: result.rows[0]
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      error: 'FETCH_STAFF_ERROR'
+    });
+  }
+});
+
+// Create staff member
+app.post('/api/staff', async (req
