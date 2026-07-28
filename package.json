@@ -1,15 +1,25 @@
 {
-  "name": "laundry-enterprise",
+  "name": "aplikasi-laundry-enterprise",
   "version": "1.0.0",
-  "description": "Aplikasi Laundry Enterprise - Laundry Enterprise Platform",
+  "description": "Aplikasi Laundry Enterprise - Platform Manajemen Laundry Enterprise",
   "main": "src/app.js",
   "scripts": {
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
     "test": "node test/unit.test.js",
     "lint": "eslint src/",
-    "seed": "node scripts/seed.js"
+    "migrate": "node src/database/migrate.js",
+    "seed": "node src/database/seed.js"
   },
+  "keywords": [
+    "laundry",
+    "enterprise",
+    "management",
+    "multi-branch",
+    "pos"
+  ],
+  "author": "Enterprise Team",
+  "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",
     "cors": "^2.8.5",
@@ -20,9 +30,11 @@
     "bcryptjs": "^2.4.3",
     "uuid": "^9.0.0",
     "express-validator": "^7.0.0",
-    "express-rate-limit": "^7.1.5",
-    "pdfkit": "^0.13.0",
-    "node-cron": "^3.0.2"
+    "axios": "^1.6.2",
+    "nodemailer": "^6.9.7",
+    "twilio": "^3.10.0",
+    "moment": "^2.29.4",
+    "moment-timezone": "^0.5.45"
   },
   "devDependencies": {
     "nodemon": "^3.0.1",
@@ -30,13 +42,5 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  },
-  "keywords": [
-    "laundry",
-    "enterprise",
-    "management",
-    "erp"
-  ],
-  "author": "Laundry Enterprise",
-  "license": "MIT"
+  }
 }
