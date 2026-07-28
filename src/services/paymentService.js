@@ -1,468 +1,512 @@
-// services/paymentService.js
 const crypto = require('crypto');
-const { db } = require('../config/database');
+const db = require('../config/database');
 
 class PaymentService {
     constructor() {
-        this.serverKey = process.env.PAYMENT_GATEWAY_KEY || 'laundry-enterprise-secret-key-2026';
+        this.serverKey = process.env.PAYMENT_GATEWAY_KEY || 'laundry_enterprise_secret_key';
         this.merchantId = process.env.PAYMENT_MERCHANT_ID || 'LAUNDRY-MERCHANT-001';
         this.qrisTimeout = 15 * 60 * 1000; // 15 minutes
         this.vaTimeout = 24 * 60 * 60 * 1000; // 24 hours
     }
 
-    /**
-     * Create QRIS Payment Transaction
-     * QR Code format for instant payment via mobile banking
-     */
-    async createQrisTransaction(orderId, amount, customerInfo = {}) {
+    // Create QRIS Payment Transaction
+    async createQrisTransaction(orderId, amount, customerInfo = {}, tenantId) {
         try {
-            const referenceNo = `QRIS-${orderId}-${Date.now()}`;
+            const referenceNo = `QRIS-${tenantId}-${orderId}-${Date.now()}`;
             const expiresAt = new Date(Date.now() + this.qrisTimeout);
 
-            // Generate QR code data
-            const qrData = {
-                merchantId: this.merchantId,
-                orderId,
-                amount,
-                timestamp: new Date().toISOString(),
-                reference: referenceNo
-            };
-
-            const qrPayload = Buffer.from(JSON.stringify(qrData)).toString('base64');
-            const signature = this.generateSignature(qrPayload);
-
-            const transaction = {
-                payment_id: `PAY-${Date.now()}`,
+            const paymentData = {
+                payment_id: `PAY-${crypto.randomBytes(8).toString('hex').toUpperCase()}`,
                 order_id: orderId,
-                amount,
+                customer_name: customerInfo.name || 'Customer',
+                amount: amount,
                 payment_method: 'QRIS',
-                status: 'pending',
-                reference: referenceNo,
+                reference_no: referenceNo,
                 provider: 'Midtrans/Xendit',
-                channel: 'qris',
-                customer_name: customerInfo.name || 'Pelanggan',
-                customer_phone: customerInfo.phone || '',
-                customer_email: customerInfo.email || '',
+                status: 'pending',
                 expires_at: expiresAt.toISOString(),
                 created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
+                tenant_id: tenantId,
                 metadata: JSON.stringify({
-                    qrCode: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(referenceNo)}`,
-                    deepLink: `https://link.midtrans.com/${referenceNo}`,
-                    signature
+                    phone: customerInfo.phone || '',
+                    email: customerInfo.email || '',
+                    customerId: customerInfo.customerId || ''
                 })
             };
 
-            // Store transaction
-            await this.storeTransaction(transaction);
+            await db.execute(
+                `INSERT INTO payments (payment_id, order_id, customer_name, amount, payment_method, 
+                 reference_no, provider, status, expires_at, created_at, tenant_id, metadata) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    paymentData.payment_id,
+                    paymentData.order_id,
+                    paymentData.customer_name,
+                    paymentData.amount,
+                    paymentData.payment_method,
+                    paymentData.reference_no,
+                    paymentData.provider,
+                    paymentData.status,
+                    paymentData.expires_at,
+                    paymentData.created_at,
+                    paymentData.tenant_id,
+                    paymentData.metadata
+                ]
+            );
 
             return {
                 success: true,
-                provider: 'Midtrans / Xendit',
-                paymentId: transaction.payment_id,
-                referenceNo,
-                orderId,
-                amount,
+                provider: 'Midtrans/Xendit',
+                paymentId: paymentData.payment_id,
+                referenceNo: referenceNo,
+                orderId: orderId,
+                amount: amount,
                 currency: 'IDR',
                 qrCodeUrl: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(referenceNo)}`,
-                deepLink: `https://link.midtrans.com/${referenceNo}`,
-                customer: {
-                    name: customerInfo.name || 'Pelanggan',
-                    phone: customerInfo.phone || '',
-                    email: customerInfo.email || ''
-                },
+                deepLink: `gopay://pay?amount=${amount}&ref=${referenceNo}`,
+                customer: customerInfo.name || 'Customer',
                 expiresAt: expiresAt.toISOString(),
-                expiresIn: Math.floor(this.qrisTimeout / 1000)
+                status: 'pending'
             };
         } catch (error) {
-            throw new Error(`QRIS Transaction Error: ${error.message}`);
+            console.error('Error creating QRIS transaction:', error);
+            throw new Error(`Gagal membuat transaksi QRIS: ${error.message}`);
         }
     }
 
-    /**
-     * Create Virtual Account Payment
-     * Bank transfer payment with unique VA number
-     */
-    async createVirtualAccountTransaction(orderId, amount, bank = 'BCA', customerInfo = {}) {
+    // Create Virtual Account Payment
+    async createVirtualAccountTransaction(orderId, amount, bank = 'BCA', customerInfo = {}, tenantId) {
         try {
-            const vaNumber = `${this.getVAPrefix(bank)}${Math.floor(1000000000 + Math.random() * 9000000000)}`;
+            const vaNumber = `88008${Math.floor(10000000 + Math.random() * 90000000)}`;
             const expiresAt = new Date(Date.now() + this.vaTimeout);
 
-            const transaction = {
-                payment_id: `PAY-${Date.now()}`,
+            const paymentData = {
+                payment_id: `PAY-${crypto.randomBytes(8).toString('hex').toUpperCase()}`,
                 order_id: orderId,
-                amount,
-                payment_method: 'Bank Transfer',
+                customer_name: customerInfo.name || 'Customer',
+                amount: amount,
+                payment_method: `${bank.toUpperCase()} Virtual Account`,
+                va_number: vaNumber,
+                provider: `${bank.toUpperCase()} VA`,
                 status: 'pending',
-                reference: vaNumber,
-                provider: `${bank.toUpperCase()} Virtual Account`,
-                channel: 'virtual_account',
-                customer_name: customerInfo.name || 'Pelanggan',
-                customer_phone: customerInfo.phone || '',
-                customer_email: customerInfo.email || '',
                 expires_at: expiresAt.toISOString(),
                 created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
+                tenant_id: tenantId,
                 metadata: JSON.stringify({
                     bank: bank.toUpperCase(),
-                    vaNumber,
-                    instructions: `Transfer ke rekening virtual ${bank.toUpperCase()}: ${vaNumber}`,
-                    minimumTransfer: amount,
-                    maximumTransfer: amount * 2
+                    phone: customerInfo.phone || '',
+                    email: customerInfo.email || '',
+                    customerId: customerInfo.customerId || ''
                 })
             };
 
-            // Store transaction
-            await this.storeTransaction(transaction);
+            await db.execute(
+                `INSERT INTO payments (payment_id, order_id, customer_name, amount, payment_method, 
+                 va_number, provider, status, expires_at, created_at, tenant_id, metadata) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    paymentData.payment_id,
+                    paymentData.order_id,
+                    paymentData.customer_name,
+                    paymentData.amount,
+                    paymentData.payment_method,
+                    paymentData.va_number,
+                    paymentData.provider,
+                    paymentData.status,
+                    paymentData.expires_at,
+                    paymentData.created_at,
+                    paymentData.tenant_id,
+                    paymentData.metadata
+                ]
+            );
 
             return {
                 success: true,
                 provider: `${bank.toUpperCase()} Virtual Account`,
-                paymentId: transaction.payment_id,
-                orderId,
-                amount,
-                vaNumber,
-                bank: bank.toUpperCase(),
-                instructions: `Transfer ke rekening virtual ${bank.toUpperCase()}: ${vaNumber} sebelum ${expiresAt.toLocaleDateString('id-ID')} ${expiresAt.toLocaleTimeString('id-ID')}.`,
-                customer: {
-                    name: customerInfo.name || 'Pelanggan',
-                    phone: customerInfo.phone || '',
-                    email: customerInfo.email || ''
-                },
+                paymentId: paymentData.payment_id,
+                orderId: orderId,
+                amount: amount,
+                vaNumber: vaNumber,
+                bankName: bank.toUpperCase(),
+                instructions: `Transfer ke nomor Virtual Account ${bank.toUpperCase()}: ${vaNumber} sebelum ${expiresAt.toLocaleString('id-ID')}`,
                 expiresAt: expiresAt.toISOString(),
-                expiresIn: Math.floor(this.vaTimeout / 1000)
+                status: 'pending'
             };
         } catch (error) {
-            throw new Error(`Virtual Account Transaction Error: ${error.message}`);
+            console.error('Error creating Virtual Account transaction:', error);
+            throw new Error(`Gagal membuat transaksi Virtual Account: ${error.message}`);
         }
     }
 
-    /**
-     * Create E-Wallet Payment
-     * OVO, DANA, LinkAja, etc.
-     */
-    async createEWalletTransaction(orderId, amount, walletType = 'OVO', customerInfo = {}) {
+    // Create Bank Transfer Payment
+    async createBankTransferTransaction(orderId, amount, customerInfo = {}, tenantId) {
         try {
-            const referenceNo = `EWALLET-${orderId}-${Date.now()}`;
-            const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+            const referenceNo = `TRF-${tenantId}-${orderId}-${Date.now()}`;
+            const expiresAt = new Date(Date.now() + this.vaTimeout);
 
-            const transaction = {
-                payment_id: `PAY-${Date.now()}`,
+            const paymentData = {
+                payment_id: `PAY-${crypto.randomBytes(8).toString('hex').toUpperCase()}`,
                 order_id: orderId,
-                amount,
-                payment_method: walletType.toUpperCase(),
+                customer_name: customerInfo.name || 'Customer',
+                amount: amount,
+                payment_method: 'Transfer Bank',
+                reference_no: referenceNo,
+                provider: 'Bank Transfer',
                 status: 'pending',
-                reference: referenceNo,
-                provider: walletType,
-                channel: 'e_wallet',
-                customer_name: customerInfo.name || 'Pelanggan',
-                customer_phone: customerInfo.phone || '',
-                customer_email: customerInfo.email || '',
                 expires_at: expiresAt.toISOString(),
                 created_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
+                tenant_id: tenantId,
                 metadata: JSON.stringify({
-                    walletType,
-                    deepLink: `https://wallet.${walletType.toLowerCase()}.co.id/pay/${referenceNo}`,
-                    checkoutUrl: `https://checkout.midtrans.com/${referenceNo}`
+                    phone: customerInfo.phone || '',
+                    email: customerInfo.email || '',
+                    customerId: customerInfo.customerId || ''
                 })
             };
 
-            await this.storeTransaction(transaction);
+            await db.execute(
+                `INSERT INTO payments (payment_id, order_id, customer_name, amount, payment_method, 
+                 reference_no, provider, status, expires_at, created_at, tenant_id, metadata) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    paymentData.payment_id,
+                    paymentData.order_id,
+                    paymentData.customer_name,
+                    paymentData.amount,
+                    paymentData.payment_method,
+                    paymentData.reference_no,
+                    paymentData.provider,
+                    paymentData.status,
+                    paymentData.expires_at,
+                    paymentData.created_at,
+                    paymentData.tenant_id,
+                    paymentData.metadata
+                ]
+            );
 
             return {
                 success: true,
-                provider: walletType,
-                paymentId: transaction.payment_id,
-                referenceNo,
-                orderId,
-                amount,
+                provider: 'Bank Transfer',
+                paymentId: paymentData.payment_id,
+                referenceNo: referenceNo,
+                orderId: orderId,
+                amount: amount,
                 currency: 'IDR',
-                deepLink: `https://wallet.${walletType.toLowerCase()}.co.id/pay/${referenceNo}`,
-                checkoutUrl: `https://checkout.midtrans.com/${referenceNo}`,
-                customer: {
-                    name: customerInfo.name || 'Pelanggan',
-                    phone: customerInfo.phone || ''
+                bankAccount: {
+                    bankName: 'PT Laundry Enterprise Bank',
+                    accountNumber: '1234567890',
+                    accountHolder: 'Laundry Enterprise Indonesia'
                 },
-                expiresAt: expiresAt.toISOString()
+                instructions: `Transfer sebesar Rp ${amount.toLocaleString('id-ID')} ke rekening bank dengan kode referensi: ${referenceNo}`,
+                expiresAt: expiresAt.toISOString(),
+                status: 'pending'
             };
         } catch (error) {
-            throw new Error(`E-Wallet Transaction Error: ${error.message}`);
+            console.error('Error creating bank transfer transaction:', error);
+            throw new Error(`Gagal membuat transaksi transfer bank: ${error.message}`);
         }
     }
 
-    /**
-     * Manual Cash Payment (Over The Counter)
-     * Immediate confirmation payment
-     */
-    async createCashPayment(orderId, amount, receivedBy, customerInfo = {}) {
+    // Verify Webhook Signature
+    verifyWebhookSignature(payload, signature, secret = null) {
         try {
-            const referenceNo = `CASH-${orderId}-${Date.now()}`;
-            const now = new Date();
+            const key = secret || this.serverKey;
+            if (!signature || signature.length === 0) {
+                return true;
+            }
 
-            const transaction = {
-                payment_id: `PAY-${Date.now()}`,
-                order_id: orderId,
-                amount,
-                payment_method: 'Cash',
-                status: 'completed',
-                reference: referenceNo,
-                provider: 'Manual/OTC',
-                channel: 'cash',
-                customer_name: customerInfo.name || 'Pelanggan',
-                customer_phone: customerInfo.phone || '',
-                customer_email: customerInfo.email || '',
-                paid_date: now.toISOString(),
-                created_at: now.toISOString(),
-                updated_at: now.toISOString(),
-                metadata: JSON.stringify({
-                    receivedBy,
-                    paymentLocation: 'Toko Laundry',
-                    method: 'Tunai'
-                })
-            };
+            const expectedSig = crypto
+                .createHmac('sha256', key)
+                .update(JSON.stringify(payload))
+                .digest('hex');
 
-            await this.storeTransaction(transaction);
+            return expectedSig === signature;
+        } catch (error) {
+            console.error('Error verifying webhook signature:', error);
+            return false;
+        }
+    }
+
+    // Handle Payment Webhook
+    async handlePaymentWebhook(webhookData, tenantId) {
+        try {
+            const { referenceNo, status, amount } = webhookData;
+
+            if (status === 'completed' || status === 'paid' || status === 'settlement') {
+                const result = await db.execute(
+                    `UPDATE payments SET status = ?, updated_at = ? 
+                     WHERE reference_no = ? AND tenant_id = ?`,
+                    ['completed', new Date().toISOString(), referenceNo, tenantId]
+                );
+
+                if (result.changes > 0) {
+                    const payment = await db.query(
+                        `SELECT order_id FROM payments WHERE reference_no = ? AND tenant_id = ?`,
+                        [referenceNo, tenantId]
+                    );
+
+                    if (payment && payment.length > 0) {
+                        await db.execute(
+                            `UPDATE orders SET payment_status = ?, updated_at = ? 
+                             WHERE order_number = ? AND tenant_id = ?`,
+                            ['paid', new Date().toISOString(), payment[0].order_id, tenantId]
+                        );
+                    }
+                }
+            } else if (status === 'failed' || status === 'denied') {
+                await db.execute(
+                    `UPDATE payments SET status = ?, updated_at = ? 
+                     WHERE reference_no = ? AND tenant_id = ?`,
+                    ['failed', new Date().toISOString(), referenceNo, tenantId]
+                );
+            } else if (status === 'expired') {
+                await db.execute(
+                    `UPDATE payments SET status = ?, updated_at = ? 
+                     WHERE reference_no = ? AND tenant_id = ?`,
+                    ['expired', new Date().toISOString(), referenceNo, tenantId]
+                );
+            }
 
             return {
                 success: true,
-                provider: 'Tunai',
-                paymentId: transaction.payment_id,
-                referenceNo,
-                orderId,
-                amount,
-                currency: 'IDR',
-                status: 'completed',
-                paidDate: now.toISOString(),
-                receivedBy,
-                customer: {
-                    name: customerInfo.name || 'Pelanggan',
-                    phone: customerInfo.phone || ''
+                message: 'Webhook diproses dengan sukses'
+            };
+        } catch (error) {
+            console.error('Error handling payment webhook:', error);
+            throw new Error(`Gagal memproses webhook pembayaran: ${error.message}`);
+        }
+    }
+
+    // Get Payment by ID
+    async getPaymentById(paymentId, tenantId) {
+        try {
+            const payment = await db.query(
+                `SELECT * FROM payments WHERE payment_id = ? AND tenant_id = ?`,
+                [paymentId, tenantId]
+            );
+
+            if (!payment || payment.length === 0) {
+                throw new Error('Pembayaran tidak ditemukan');
+            }
+
+            return payment[0];
+        } catch (error) {
+            console.error('Error getting payment:', error);
+            throw error;
+        }
+    }
+
+    // Get Payments by Order ID
+    async getPaymentsByOrderId(orderId, tenantId) {
+        try {
+            const payments = await db.query(
+                `SELECT * FROM payments WHERE order_id = ? AND tenant_id = ? ORDER BY created_at DESC`,
+                [orderId, tenantId]
+            );
+
+            return payments || [];
+        } catch (error) {
+            console.error('Error getting payments by order:', error);
+            throw error;
+        }
+    }
+
+    // List Payments with Pagination
+    async listPayments(tenantId, options = {}) {
+        try {
+            const page = Math.max(1, options.page || 1);
+            const limit = Math.min(100, options.limit || 20);
+            const offset = (page - 1) * limit;
+            const status = options.status;
+            const paymentMethod = options.paymentMethod;
+
+            let query = `SELECT * FROM payments WHERE tenant_id = ?`;
+            let params = [tenantId];
+
+            if (status) {
+                query += ` AND status = ?`;
+                params.push(status);
+            }
+
+            if (paymentMethod) {
+                query += ` AND payment_method LIKE ?`;
+                params.push(`%${paymentMethod}%`);
+            }
+
+            const totalResult = await db.query(
+                `SELECT COUNT(*) as total FROM payments WHERE tenant_id = ?` +
+                (status ? ` AND status = ?` : '') +
+                (paymentMethod ? ` AND payment_method LIKE ?` : ''),
+                params
+            );
+
+            const total = totalResult[0]?.total || 0;
+
+            const payments = await db.query(
+                `${query} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+                [...params, limit, offset]
+            );
+
+            return {
+                data: payments || [],
+                pagination: {
+                    page,
+                    limit,
+                    total,
+                    pages: Math.ceil(total / limit)
                 }
             };
         } catch (error) {
-            throw new Error(`Cash Payment Error: ${error.message}`);
+            console.error('Error listing payments:', error);
+            throw error;
         }
     }
 
-    /**
-     * Store transaction to database
-     */
-    async storeTransaction(transaction) {
+    // Update Payment Status
+    async updatePaymentStatus(paymentId, status, tenantId) {
         try {
-            const sql = `
-                INSERT INTO payments (
-                    payment_id, order_id, amount, payment_method, status,
-                    reference, provider, channel, customer_name, customer_phone,
-                    customer_email, expires_at, paid_date, created_at, updated_at, metadata
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `;
-
-            await db.execute(sql, [
-                transaction.payment_id,
-                transaction.order_id,
-                transaction.amount,
-                transaction.payment_method,
-                transaction.status,
-                transaction.reference,
-                transaction.provider,
-                transaction.channel,
-                transaction.customer_name,
-                transaction.customer_phone,
-                transaction.customer_email,
-                transaction.expires_at || null,
-                transaction.paid_date || null,
-                transaction.created_at,
-                transaction.updated_at,
-                transaction.metadata
-            ]);
-
-            return transaction;
-        } catch (error) {
-            throw new Error(`Database Store Error: ${error.message}`);
-        }
-    }
-
-    /**
-     * Get payment details
-     */
-    async getPaymentDetails(paymentId) {
-        try {
-            const sql = `
-                SELECT * FROM payments WHERE payment_id = ? LIMIT 1
-            `;
-
-            const result = await db.execute(sql, [paymentId]);
-
-            if (result.rows.length === 0) {
-                return null;
+            const validStatuses = ['pending', 'completed', 'failed', 'expired', 'cancelled'];
+            if (!validStatuses.includes(status)) {
+                throw new Error(`Status tidak valid: ${status}`);
             }
 
-            const payment = result.rows[0];
-            if (payment.metadata) {
-                payment.metadata = JSON.parse(payment.metadata);
+            const result = await db.execute(
+                `UPDATE payments SET status = ?, updated_at = ? 
+                 WHERE payment_id = ? AND tenant_id = ?`,
+                [status, new Date().toISOString(), paymentId, tenantId]
+            );
+
+            if (result.changes === 0) {
+                throw new Error('Pembayaran tidak ditemukan');
             }
 
-            return payment;
+            return await this.getPaymentById(paymentId, tenantId);
         } catch (error) {
-            throw new Error(`Get Payment Error: ${error.message}`);
+            console.error('Error updating payment status:', error);
+            throw error;
         }
     }
 
-    /**
-     * Get payments by order ID
-     */
-    async getPaymentsByOrderId(orderId) {
+    // Calculate Payment Amount with Discount
+    async calculatePaymentAmount(orderId, discountPercent = 0, tenantId) {
         try {
-            const sql = `
-                SELECT * FROM payments WHERE order_id = ? ORDER BY created_at DESC
-            `;
+            const order = await db.query(
+                `SELECT total_price FROM orders WHERE order_number = ? AND tenant_id = ?`,
+                [orderId, tenantId]
+            );
 
-            const result = await db.execute(sql, [orderId]);
+            if (!order || order.length === 0) {
+                throw new Error('Pesanan tidak ditemukan');
+            }
 
-            return result.rows.map(payment => {
-                if (payment.metadata) {
-                    payment.metadata = JSON.parse(payment.metadata);
-                }
-                return payment;
-            });
+            const totalPrice = order[0].total_price || 0;
+            const discountAmount = (totalPrice * discountPercent) / 100;
+            const finalAmount = totalPrice - discountAmount;
+
+            return {
+                totalPrice,
+                discountPercent,
+                discountAmount,
+                finalAmount
+            };
         } catch (error) {
-            throw new Error(`Get Payments Error: ${error.message}`);
+            console.error('Error calculating payment amount:', error);
+            throw error;
         }
     }
 
-    /**
-     * Update payment status
-     */
-    async updatePaymentStatus(paymentId, status, paidDate = null) {
+    // Generate Payment Receipt
+    async generatePaymentReceipt(paymentId, tenantId) {
         try {
-            const now = new Date().toISOString();
-            const sql = `
-                UPDATE payments 
-                SET status = ?, paid_date = ?, updated_at = ?
-                WHERE payment_id = ?
-            `;
+            const payment = await this.getPaymentById(paymentId, tenantId);
 
-            await db.execute(sql, [status, paidDate || null, now, paymentId]);
+            const receipt = {
+                receiptNumber: `RCP-${Date.now()}`,
+                paymentId: payment.payment_id,
+                orderId: payment.order_id,
+                customerName: payment.customer_name,
+                amount: payment.amount,
+                paymentMethod: payment.payment_method,
+                provider: payment.provider,
+                status: payment.status,
+                transactionDate: payment.created_at,
+                currency: 'IDR'
+            };
 
-            return await this.getPaymentDetails(paymentId);
+            return receipt;
         } catch (error) {
-            throw new Error(`Update Payment Status Error: ${error.message}`);
+            console.error('Error generating payment receipt:', error);
+            throw error;
         }
     }
 
-    /**
-     * Verify webhook signature from payment gateway
-     */
-    verifyWebhookSignature(payload, signature) {
-        if (!signature) return true;
-
-        const expectedSig = crypto
-            .createHmac('sha256', this.serverKey)
-            .update(JSON.stringify(payload))
-            .digest('hex');
-
-        return expectedSig === signature;
-    }
-
-    /**
-     * Generate signature for transaction
-     */
-    generateSignature(data) {
-        return crypto
-            .createHmac('sha256', this.serverKey)
-            .update(data)
-            .digest('hex');
-    }
-
-    /**
-     * Get VA prefix by bank
-     */
-    getVAPrefix(bank) {
-        const prefixes = {
-            bca: '8800',
-            mandiri: '8910',
-            bni: '8888',
-            cimb: '8800',
-            bri: '8880'
-        };
-
-        return prefixes[bank.toLowerCase()] || '8800';
-    }
-
-    /**
-     * Calculate payment summary for period
-     */
-    async getPaymentSummary(startDate, endDate) {
+    // Refund Payment
+    async refundPayment(paymentId, refundAmount, reason, tenantId) {
         try {
-            const sql = `
-                SELECT 
+            const payment = await this.getPaymentById(paymentId, tenantId);
+
+            if (payment.status !== 'completed') {
+                throw new Error('Hanya pembayaran yang sudah selesai yang dapat di-refund');
+            }
+
+            const refundId = `REFUND-${crypto.randomBytes(8).toString('hex').toUpperCase()}`;
+
+            await db.execute(
+                `INSERT INTO refunds (refund_id, payment_id, order_id, refund_amount, reason, 
+                 created_at, tenant_id, status) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    refundId,
+                    paymentId,
+                    payment.order_id,
+                    refundAmount,
+                    reason,
+                    new Date().toISOString(),
+                    tenantId,
+                    'pending'
+                ]
+            );
+
+            await db.execute(
+                `UPDATE payments SET status = ? WHERE payment_id = ?`,
+                ['refunded', paymentId]
+            );
+
+            return {
+                success: true,
+                refundId,
+                paymentId,
+                refundAmount,
+                message: 'Permintaan refund berhasil dibuat'
+            };
+        } catch (error) {
+            console.error('Error refunding payment:', error);
+            throw error;
+        }
+    }
+
+    // Get Payment Statistics
+    async getPaymentStatistics(tenantId, dateRange = {}) {
+        try {
+            const startDate = dateRange.startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+            const endDate = dateRange.endDate || new Date().toISOString();
+
+            const stats = await db.query(
+                `SELECT 
                     COUNT(*) as total_transactions,
                     SUM(amount) as total_amount,
-                    payment_method,
+                    AVG(amount) as average_amount,
                     status,
-                    COUNT(CASE WHEN status = 'completed' THEN 1 END) as successful_payments
+                    payment_method
                 FROM payments
-                WHERE created_at >= ? AND created_at <= ?
-                GROUP BY payment_method, status
-            `;
+                WHERE tenant_id = ? AND created_at BETWEEN ? AND ?
+                GROUP BY status, payment_method`,
+                [tenantId, startDate, endDate]
+            );
 
-            const result = await db.execute(sql, [startDate, endDate]);
-
-            return result.rows;
+            return stats || [];
         } catch (error) {
-            throw new Error(`Get Payment Summary Error: ${error.message}`);
-        }
-    }
-
-    /**
-     * Handle payment webhook from gateway
-     */
-    async handleWebhook(payload, signature) {
-        try {
-            // Verify signature
-            const isValid = this.verifyWebhookSignature(payload, signature);
-            if (!isValid) {
-                throw new Error('Invalid webhook signature');
-            }
-
-            const { reference, status, amount } = payload;
-
-            // Find payment by reference
-            const sql = `SELECT * FROM payments WHERE reference = ? LIMIT 1`;
-            const result = await db.execute(sql, [reference]);
-
-            if (result.rows.length === 0) {
-                throw new Error('Payment not found');
-            }
-
-            const payment = result.rows[0];
-
-            // Update payment status
-            const newStatus = status === 'success' ? 'completed' : status === 'failed' ? 'failed' : 'pending';
-            return await this.updatePaymentStatus(payment.payment_id, newStatus, new Date().toISOString());
-        } catch (error) {
-            throw new Error(`Webhook Handler Error: ${error.message}`);
-        }
-    }
-
-    /**
-     * Check and expire pending payments
-     */
-    async expirePendingPayments() {
-        try {
-            const now = new Date().toISOString();
-            const sql = `
-                UPDATE payments 
-                SET status = 'expired', updated_at = ?
-                WHERE status = 'pending' AND expires_at < ? AND expires_at IS NOT NULL
-            `;
-
-            await db.execute(sql, [now, now]);
-
-            return { message: 'Expired payments updated' };
-        } catch (error) {
-            throw new Error(`Expire Payments Error: ${error.message}`);
+            console.error('Error getting payment statistics:', error);
+            throw error;
         }
     }
 }
