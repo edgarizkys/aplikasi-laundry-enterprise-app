@@ -1,67 +1,32 @@
-I'll generate a production-ready Express.js backend for the Laundry Enterprise application. This is a substantial file, so I'll follow the chunked write protocol.
-
-Let me start with the first chunk (imports, middleware, and database setup):
-```javascript
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { createClient } from '@libsql/client';
-import jwt from 'jsonwebtoken';
-import bcrypt from 'bcrypt';
-import { v4 as uuidv4 } from 'uuid';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
 dotenv.config();
 
-const app = express();
-const PORT = process.env.PORT || 3001;
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
-// Database connection using Turso SQLite
-const db = createClient({
-  url: process.env.TURSO_CONNECTION_URL || 'file:./laundry.db',
-  authToken: process.env.TURSO_AUTH_TOKEN
-});
+const app = express();
 
 // Middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ limit: '10mb', extended: true }));
-app.use(cors({
-  origin: process.env.CORS_ORIGIN || ['http://localhost:3000', 'http://localhost:5173'],
-  credentials: true
-}));
+app.use(cors());
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
 
-// Request logging middleware
-app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} ${req.method} ${req.path}`);
-  next();
+// Database Configuration
+const db = createClient({
+  url: process.env.TURSO_CONNECTION_URL || 'file:laundry.db',
+  authToken: process.env.TURSO_AUTH_TOKEN,
 });
 
-// Error handling middleware
-const asyncHandler = (fn) => (req, res, next) => {
-  Promise.resolve(fn(req, res, next)).catch(next);
-};
-
-// Authentication middleware
-const authMiddleware = (req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  
-  if (!token) {
-    return res.status(401).json({ error: 'Token tidak ditemukan' });
-  }
-  
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
-    next();
-  } catch (error) {
-    return res.status(401).json({ error: 'Token tidak valid' });
-  }
-};
-
-// Database initialization
+// Initialize Database
 async function initializeDatabase() {
   try {
-    // Orders table
+    // Orders Table
     await db.execute(`
       CREATE TABLE IF NOT EXISTS orders (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,21 +34,23 @@ async function initializeDatabase() {
         customer_id TEXT NOT NULL,
         customer_name TEXT NOT NULL,
         phone TEXT NOT NULL,
-        items_count INTEGER NOT NULL,
+        items_description TEXT NOT NULL,
+        total_items INTEGER NOT NULL,
         weight_kg REAL NOT NULL,
         service_type TEXT NOT NULL,
         total_price REAL NOT NULL,
-        status TEXT DEFAULT 'pending',
-        pickup_date TEXT NOT NULL,
-        delivery_date TEXT NOT NULL,
-        assigned_staff TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        pickup_date DATE NOT NULL,
+        delivery_date DATE NOT NULL,
+        payment_status TEXT NOT NULL DEFAULT 'unpaid',
         notes TEXT,
+        branch_id TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    // Customers table
+    // Customers Table
     await db.execute(`
       CREATE TABLE IF NOT EXISTS customers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -91,89 +58,81 @@ async function initializeDatabase() {
         name TEXT NOT NULL,
         phone TEXT NOT NULL,
         email TEXT,
-        address TEXT,
+        address TEXT NOT NULL,
+        city TEXT NOT NULL,
         loyalty_points INTEGER DEFAULT 0,
-        total_spent REAL DEFAULT 0,
-        member_tier TEXT DEFAULT 'Regular',
-        joined_date TEXT NOT NULL,
+        total_orders INTEGER DEFAULT 0,
+        registration_date DATE NOT NULL,
+        tenant_id TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    // Staff table
+    // Employees Table
     await db.execute(`
-      CREATE TABLE IF NOT EXISTS staff (
+      CREATE TABLE IF NOT EXISTS employees (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        staff_id TEXT UNIQUE NOT NULL,
+        employee_id TEXT UNIQUE NOT NULL,
         name TEXT NOT NULL,
         position TEXT NOT NULL,
         phone TEXT NOT NULL,
-        email TEXT,
+        email TEXT NOT NULL,
+        hire_date DATE NOT NULL,
         salary REAL NOT NULL,
-        hire_date TEXT NOT NULL,
-        status TEXT DEFAULT 'active',
+        status TEXT NOT NULL DEFAULT 'active',
+        branch_id TEXT,
+        tenant_id TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    // Services table
+    // Branches Table
+    await db.execute(`
+      CREATE TABLE IF NOT EXISTS branches (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        branch_id TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        address TEXT NOT NULL,
+        city TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        manager_name TEXT,
+        operating_hours TEXT NOT NULL,
+        tenant_id TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Services Table
     await db.execute(`
       CREATE TABLE IF NOT EXISTS services (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         service_id TEXT UNIQUE NOT NULL,
         name TEXT NOT NULL,
+        description TEXT NOT NULL,
         price_per_kg REAL NOT NULL,
         turnaround_days INTEGER NOT NULL,
-        description TEXT,
-        active BOOLEAN DEFAULT 1,
+        status TEXT NOT NULL DEFAULT 'active',
+        tenant_id TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
-    // Payments table
+    // Payments Table
     await db.execute(`
       CREATE TABLE IF NOT EXISTS payments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         payment_id TEXT UNIQUE NOT NULL,
         order_id TEXT NOT NULL,
+        customer_name TEXT NOT NULL,
         amount REAL NOT NULL,
         payment_method TEXT NOT NULL,
-        status TEXT DEFAULT 'pending',
-        paid_date TEXT,
-        reference TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Inventory table
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS inventory (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        item_id TEXT UNIQUE NOT NULL,
-        item_name TEXT NOT NULL,
-        category TEXT NOT NULL,
-        quantity REAL NOT NULL,
-        unit TEXT NOT NULL,
-        reorder_level REAL NOT NULL,
-        unit_cost REAL NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Users/Auth table
-    await db.execute(`
-      CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        email TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        role TEXT DEFAULT 'staff',
-        status TEXT DEFAULT 'active',
+        payment_date DATE NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        tenant_id TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
       )
@@ -185,737 +144,586 @@ async function initializeDatabase() {
   }
 }
 
-// ============ AUTHENTICATION ROUTES ============
+// Utility Functions
+function generateId(prefix) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
 
-// Register
-app.post('/api/auth/register', asyncHandler(async (req, res) => {
-  const { username, email, password, role } = req.body;
-
-  if (!username || !email || !password) {
-    return res.status(400).json({ error: 'Username, email, dan password diperlukan' });
-  }
-
+async function seedDatabase() {
   try {
-    const hashedPassword = await bcrypt.hash(password, 10);
-    
-    const result = await db.execute({
-      sql: 'INSERT INTO users (username, email, password, role) VALUES (?, ?, ?, ?)',
-      args: [username, email, hashedPassword, role || 'staff']
-    });
+    const existingOrders = await db.execute('SELECT COUNT(*) as count FROM orders');
+    if (existingOrders.rows.length > 0 && existingOrders.rows[0].count > 0) {
+      console.log('Database already seeded');
+      return;
+    }
 
-    res.status(201).json({
-      message: 'Pengguna berhasil didaftar',
-      user_id: result.lastInsertRowid
+    // Seed Branches
+    await db.execute(`
+      INSERT INTO branches (branch_id, name, address, city, phone, manager_name, operating_hours, tenant_id)
+      VALUES 
+        ('BR-001', 'Pusat Jakarta', 'Jl. Gatot Subroto No. 1', 'Jakarta', '0213456789', 'Ahmad Wijaya', '07:00 - 21:00', 'default'),
+        ('BR-002', 'Cabang Depok', 'Jl. Margonda No. 50', 'Depok', '0217654321', 'Rina Pratama', '08:00 - 20:00', 'default')
+    `);
+
+    // Seed Services
+    await db.execute(`
+      INSERT INTO services (service_id, name, description, price_per_kg, turnaround_days, status, tenant_id)
+      VALUES 
+        ('SRV-001', 'Regular', 'Layanan pencucian standar 2-3 hari', 15000, 3, 'active', 'default'),
+        ('SRV-002', 'Express', 'Layanan kilat 1 hari', 25000, 1, 'active', 'default'),
+        ('SRV-003', 'Premium', 'Layanan premium dengan setrika profesional', 35000, 2, 'active', 'default')
+    `);
+
+    // Seed Customers
+    await db.execute(`
+      INSERT INTO customers (customer_id, name, phone, email, address, city, loyalty_points, total_orders, registration_date, tenant_id)
+      VALUES 
+        ('CUST-001', 'Budi Santoso', '081234567890', 'budi@email.com', 'Jl. Merdeka No. 10', 'Jakarta', 250, 15, '2025-12-01', 'default'),
+        ('CUST-002', 'Siti Nurhaliza', '082345678901', 'siti@email.com', 'Jl. Sudirman No. 25', 'Jakarta', 180, 10, '2026-02-15', 'default'),
+        ('CUST-003', 'Rudi Hermawan', '083456789012', 'rudi@email.com', 'Jl. Diponegoro No. 5', 'Depok', 120, 7, '2026-03-20', 'default')
+    `);
+
+    // Seed Employees
+    await db.execute(`
+      INSERT INTO employees (employee_id, name, position, phone, email, hire_date, salary, status, branch_id, tenant_id)
+      VALUES 
+        ('EMP-001', 'Ahmad Wijaya', 'Manager', '083456789012', 'ahmad@laundry.com', '2023-01-10', 5000000, 'active', 'BR-001', 'default'),
+        ('EMP-002', 'Dewi Lestari', 'Operator', '084567890123', 'dewi@laundry.com', '2024-06-15', 2500000, 'active', 'BR-001', 'default'),
+        ('EMP-003', 'Rina Pratama', 'Manager', '085678901234', 'rina@laundry.com', '2023-06-01', 4500000, 'active', 'BR-002', 'default')
+    `);
+
+    // Seed Orders
+    await db.execute(`
+      INSERT INTO orders (order_number, customer_id, customer_name, phone, items_description, total_items, weight_kg, service_type, total_price, status, pickup_date, delivery_date, payment_status, notes, branch_id)
+      VALUES 
+        ('ORD-2026-0001', 'CUST-001', 'Budi Santoso', '081234567890', 'Baju, Celana, Jas', 5, 4.2, 'Regular', 63000, 'processing', '2026-07-28', '2026-07-30', 'paid', 'Hati-hati dengan kain sutra', 'BR-001'),
+        ('ORD-2026-0002', 'CUST-002', 'Siti Nurhaliza', '082345678901', 'Kemeja, Rok, Daster', 8, 3.8, 'Express', 95000, 'ready', '2026-07-27', '2026-07-28', 'paid', 'Pengiriman ke rumah', 'BR-001'),
+        ('ORD-2026-0003', 'CUST-003', 'Rudi Hermawan', '083456789012', 'Jaket, Celana panjang', 3, 2.5, 'Premium', 87500, 'completed', '2026-07-26', '2026-07-28', 'paid', '', 'BR-002')
+    `);
+
+    // Seed Payments
+    await db.execute(`
+      INSERT INTO payments (payment_id, order_id, customer_name, amount, payment_method, payment_date, status, tenant_id)
+      VALUES 
+        ('PAY-001', 'ORD-2026-0001', 'Budi Santoso', 63000, 'QRIS', '2026-07-28', 'completed', 'default'),
+        ('PAY-002', 'ORD-2026-0002', 'Siti Nurhaliza', 95000, 'Transfer Bank', '2026-07-27', 'completed', 'default'),
+        ('PAY-003', 'ORD-2026-0003', 'Rudi Hermawan', 87500, 'Cash', '2026-07-26', 'completed', 'default')
+    `);
+
+    console.log('Database seeded successfully');
+  } catch (error) {
+    console.error('Database seeding error:', error);
+  }
+}
+
+// ORDERS ENDPOINTS
+app.get('/api/orders', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+    const status = req.query.status;
+    const tenantId = req.query.tenant_id || 'default';
+
+    let query = 'SELECT * FROM orders WHERE tenant_id = ? OR tenant_id IS NULL';
+    let countQuery = 'SELECT COUNT(*) as total FROM orders WHERE tenant_id = ? OR tenant_id IS NULL';
+    const params = [tenantId];
+
+    if (status) {
+      query += ' AND status = ?';
+      countQuery += ' AND status = ?';
+      params.push(status);
+    }
+
+    query += ` ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
+
+    const orders = await db.execute(query, params);
+    const countResult = await db.execute(countQuery, params);
+    const total = countResult.rows[0].total;
+
+    res.json({
+      data: orders.rows,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+      },
     });
   } catch (error) {
-    if (error.message.includes('UNIQUE')) {
-      return res.status(409).json({ error: 'Username atau email sudah terdaftar' });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/orders/:id', async (req, res) => {
+  try {
+    const result = await db.execute('SELECT * FROM orders WHERE id = ?', [req.params.id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Pesanan tidak ditemukan' });
     }
-    throw error;
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
-}));
+});
 
-// Login
-app.post('/api/auth/login', asyncHandler(async (req, res) => {
-  const { username, password } = req.body;
-
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Username dan password diperlukan' });
-  }
-
-  const user = await db.execute({
-    sql: 'SELECT * FROM users WHERE username = ?',
-    args: [username]
-  });
-
-  if (user.rows.length === 0) {
-    return res.status(401).json({ error: 'Username atau password salah' });
-  }
-
-  const dbUser = user.rows[0];
-  const passwordMatch = await bcrypt.compare(password, dbUser.password);
-
-  if (!passwordMatch) {
-    return res.status(401).json({ error: 'Username atau password salah' });
-  }
-
-  const token = jwt.sign(
-    { id: dbUser.id, username: dbUser.username, role: dbUser.role },
-    JWT_SECRET,
-    { expiresIn: '24h' }
-  );
-
-  res.json({
-    token,
-    user: {
-      id: dbUser.id,
-      username: dbUser.username,
-      email: dbUser.email,
-      role: dbUser.role
-    }
-  });
-}));
-
-// ============ ORDERS ROUTES ============
-
-// Get all orders with pagination
-app.get('/api/orders', authMiddleware, asyncHandler(async (req, res) => {
-  const { page = 1, limit = 10, status, search } = req.query;
-  const offset = (page - 1) * limit;
-
-  let query = 'SELECT * FROM orders WHERE 1=1';
-  const args = [];
-
-  if (status) {
-    query += ' AND status = ?';
-    args.push(status);
-  }
-
-  if (search) {
-    query += ' AND (customer_name LIKE ? OR order_number LIKE ? OR phone LIKE ?)';
-    args.push(`%${search}%`, `%${search}%`, `%${search}%`);
-  }
-
-  query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-  args.push(limit, offset);
-
-  const result = await db.execute({ sql: query, args });
-  
-  const countResult = await db.execute({
-    sql: 'SELECT COUNT(*) as total FROM orders',
-    args: []
-  });
-
-  const total = countResult.rows[0].total;
-
-  res.json({
-    data: result.rows,
-    pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total,
-      pages: Math.ceil(total / limit)
-    }
-  });
-}));
-
-// Get single order
-app.get('/api/orders/:id', authMiddleware, asyncHandler(async (req, res) => {
-  const result = await db.execute({
-    sql: 'SELECT * FROM orders WHERE id = ?',
-    args: [req.params.id]
-  });
-
-  if (result.rows.length === 0) {
-    return res.status(404).json({ error: 'Pesanan tidak ditemukan' });
-  }
-
-  res.json(result.rows[0]);
-}));
-
-// Create order
-app.post('/api/orders', authMiddleware, asyncHandler(async (req, res) => {
-  const {
-    customer_id,
-    customer_name,
-    phone,
-    items_count,
-    weight_kg,
-    service_type,
-    total_price,
-    pickup_date,
-    delivery_date,
-    assigned_staff,
-    notes
-  } = req.body;
-
-  if (!customer_name || !phone || !weight_kg || !service_type || !total_price) {
-    return res.status(400).json({ error: 'Field wajib diisi' });
-  }
-
-  const order_number = `ORD-${Date.now()}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
-
-  const result = await db.execute({
-    sql: `INSERT INTO orders 
-          (order_number, customer_id, customer_name, phone, items_count, weight_kg, service_type, total_price, status, pickup_date, delivery_date, assigned_staff, notes)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    args: [
-      order_number,
-      customer_id || `CUST-${uuidv4().substr(0, 8).toUpperCase()}`,
+app.post('/api/orders', async (req, res) => {
+  try {
+    const {
+      customer_id,
       customer_name,
       phone,
-      items_count || 0,
+      items_description,
+      total_items,
       weight_kg,
       service_type,
       total_price,
-      'pending',
       pickup_date,
       delivery_date,
-      assigned_staff,
-      notes || ''
-    ]
-  });
+      notes,
+      branch_id,
+    } = req.body;
 
-  res.status(201).json({
-    message: 'Pesanan berhasil dibuat',
-    order_id: result.lastInsertRowid,
-    order_number
-  });
-}));
+    const order_number = `ORD-${new Date().getFullYear()}-${Math.random().toString().slice(2, 7).padStart(5, '0')}`;
+    const tenantId = req.body.tenant_id || 'default';
 
-// Update order
-app.put('/api/orders/:id', authMiddleware, asyncHandler(async (req, res) => {
-  const { status, assigned_staff, notes, delivery_date } = req.body;
+    const result = await db.execute(
+      `INSERT INTO orders (order_number, customer_id, customer_name, phone, items_description, total_items, weight_kg, service_type, total_price, status, pickup_date, delivery_date, notes, branch_id, tenant_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [order_number, customer_id, customer_name, phone, items_description, total_items, weight_kg, service_type, total_price, 'pending', pickup_date, delivery_date, notes || '', branch_id || '', tenantId]
+    );
 
-  const result = await db.execute({
-    sql: 'SELECT * FROM orders WHERE id = ?',
-    args: [req.params.id]
-  });
-
-  if (result.rows.length === 0) {
-    return res.status(404).json({ error: 'Pesanan tidak ditemukan' });
+    res.status(201).json({
+      id: result.lastInsertRowid,
+      order_number,
+      message: 'Pesanan berhasil dibuat',
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
+});
 
-  const order = result.rows[0];
-  const updatedStatus = status || order.status;
-  const updatedStaff = assigned_staff || order.assigned_staff;
-  const updatedNotes = notes !== undefined ? notes : order.notes;
-  const updatedDeliveryDate = delivery_date || order.delivery_date;
+app.put('/api/orders/:id', async (req, res) => {
+  try {
+    const { status, payment_status, notes, total_price } = req.body;
 
-  await db.execute({
-    sql: `UPDATE orders 
-          SET status = ?, assigned_staff = ?, notes = ?, delivery_date = ?, updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?`,
-    args: [updatedStatus, updatedStaff, updatedNotes, updatedDeliveryDate, req.params.id]
-  });
+    let updateQuery = 'UPDATE orders SET updated_at = CURRENT_TIMESTAMP';
+    const params = [];
 
-  res.json({ message: 'Pesanan berhasil diperbarui' });
-}));
-
-// Delete order
-app.delete('/api/orders/:id', authMiddleware, asyncHandler(async (req, res) => {
-  const result = await db.execute({
-    sql: 'SELECT * FROM orders WHERE id = ?',
-    args: [req.params.id]
-  });
-
-  if (result.rows.length === 0) {
-    return res.status(404).json({ error: 'Pesanan tidak ditemukan' });
-  }
-
-  await db.execute({
-    sql: 'DELETE FROM orders WHERE id = ?',
-    args: [req.params.id]
-  });
-
-  res.json({ message: 'Pesanan berhasil dihapus' });
-}));
-```
-
-Now let me append the customers routes (chunk 2):
-```javascript
-// ============ CUSTOMERS ROUTES ============
-
-// Get all customers with pagination
-app.get('/api/customers', authMiddleware, asyncHandler(async (req, res) => {
-  const { page = 1, limit = 10, search, tier } = req.query;
-  const offset = (page - 1) * limit;
-
-  let query = 'SELECT * FROM customers WHERE 1=1';
-  const args = [];
-
-  if (search) {
-    query += ' AND (name LIKE ? OR phone LIKE ? OR email LIKE ?)';
-    args.push(`%${search}%`, `%${search}%`, `%${search}%`);
-  }
-
-  if (tier) {
-    query += ' AND member_tier = ?';
-    args.push(tier);
-  }
-
-  query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-  args.push(limit, offset);
-
-  const result = await db.execute({ sql: query, args });
-  
-  const countResult = await db.execute({
-    sql: 'SELECT COUNT(*) as total FROM customers'
-  });
-
-  const total = countResult.rows[0].total;
-
-  res.json({
-    data: result.rows,
-    pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total,
-      pages: Math.ceil(total / limit)
+    if (status) {
+      updateQuery += ', status = ?';
+      params.push(status);
     }
-  });
-}));
-
-// Get single customer
-app.get('/api/customers/:id', authMiddleware, asyncHandler(async (req, res) => {
-  const result = await db.execute({
-    sql: 'SELECT * FROM customers WHERE id = ?',
-    args: [req.params.id]
-  });
-
-  if (result.rows.length === 0) {
-    return res.status(404).json({ error: 'Pelanggan tidak ditemukan' });
-  }
-
-  res.json(result.rows[0]);
-}));
-
-// Create customer
-app.post('/api/customers', authMiddleware, asyncHandler(async (req, res) => {
-  const {
-    name,
-    phone,
-    email,
-    address,
-    member_tier
-  } = req.body;
-
-  if (!name || !phone) {
-    return res.status(400).json({ error: 'Nama dan telepon diperlukan' });
-  }
-
-  const customer_id = `CUST-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
-  const joined_date = new Date().toISOString().split('T')[0];
-
-  const result = await db.execute({
-    sql: `INSERT INTO customers 
-          (customer_id, name, phone, email, address, member_tier, joined_date)
-          VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    args: [
-      customer_id,
-      name,
-      phone,
-      email || '',
-      address || '',
-      member_tier || 'Regular',
-      joined_date
-    ]
-  });
-
-  res.status(201).json({
-    message: 'Pelanggan berhasil ditambahkan',
-    customer_id: result.lastInsertRowid,
-    cust_id: customer_id
-  });
-}));
-
-// Update customer
-app.put('/api/customers/:id', authMiddleware, asyncHandler(async (req, res) => {
-  const { name, phone, email, address, member_tier, loyalty_points, total_spent } = req.body;
-
-  const result = await db.execute({
-    sql: 'SELECT * FROM customers WHERE id = ?',
-    args: [req.params.id]
-  });
-
-  if (result.rows.length === 0) {
-    return res.status(404).json({ error: 'Pelanggan tidak ditemukan' });
-  }
-
-  const customer = result.rows[0];
-
-  await db.execute({
-    sql: `UPDATE customers 
-          SET name = ?, phone = ?, email = ?, address = ?, member_tier = ?, loyalty_points = ?, total_spent = ?, updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?`,
-    args: [
-      name || customer.name,
-      phone || customer.phone,
-      email !== undefined ? email : customer.email,
-      address !== undefined ? address : customer.address,
-      member_tier || customer.member_tier,
-      loyalty_points !== undefined ? loyalty_points : customer.loyalty_points,
-      total_spent !== undefined ? total_spent : customer.total_spent,
-      req.params.id
-    ]
-  });
-
-  res.json({ message: 'Pelanggan berhasil diperbarui' });
-}));
-
-// Add loyalty points
-app.post('/api/customers/:id/loyalty', authMiddleware, asyncHandler(async (req, res) => {
-  const { points } = req.body;
-
-  if (points === undefined) {
-    return res.status(400).json({ error: 'Poin diperlukan' });
-  }
-
-  const result = await db.execute({
-    sql: 'SELECT * FROM customers WHERE id = ?',
-    args: [req.params.id]
-  });
-
-  if (result.rows.length === 0) {
-    return res.status(404).json({ error: 'Pelanggan tidak ditemukan' });
-  }
-
-  const customer = result.rows[0];
-  const newPoints = (customer.loyalty_points || 0) + points;
-
-  await db.execute({
-    sql: 'UPDATE customers SET loyalty_points = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-    args: [newPoints, req.params.id]
-  });
-
-  res.json({ message: 'Poin loyalitas berhasil ditambahkan', new_points: newPoints });
-}));
-
-// Delete customer
-app.delete('/api/customers/:id', authMiddleware, asyncHandler(async (req, res) => {
-  const result = await db.execute({
-    sql: 'SELECT * FROM customers WHERE id = ?',
-    args: [req.params.id]
-  });
-
-  if (result.rows.length === 0) {
-    return res.status(404).json({ error: 'Pelanggan tidak ditemukan' });
-  }
-
-  await db.execute({
-    sql: 'DELETE FROM customers WHERE id = ?',
-    args: [req.params.id]
-  });
-
-  res.json({ message: 'Pelanggan berhasil dihapus' });
-}));
-
-// ============ STAFF ROUTES ============
-
-// Get all staff with pagination
-app.get('/api/staff', authMiddleware, asyncHandler(async (req, res) => {
-  const { page = 1, limit = 10, position, status } = req.query;
-  const offset = (page - 1) * limit;
-
-  let query = 'SELECT * FROM staff WHERE 1=1';
-  const args = [];
-
-  if (position) {
-    query += ' AND position = ?';
-    args.push(position);
-  }
-
-  if (status) {
-    query += ' AND status = ?';
-    args.push(status);
-  }
-
-  query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-  args.push(limit, offset);
-
-  const result = await db.execute({ sql: query, args });
-  
-  const countResult = await db.execute({
-    sql: 'SELECT COUNT(*) as total FROM staff'
-  });
-
-  const total = countResult.rows[0].total;
-
-  res.json({
-    data: result.rows,
-    pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total,
-      pages: Math.ceil(total / limit)
+    if (payment_status) {
+      updateQuery += ', payment_status = ?';
+      params.push(payment_status);
     }
-  });
-}));
-
-// Get single staff
-app.get('/api/staff/:id', authMiddleware, asyncHandler(async (req, res) => {
-  const result = await db.execute({
-    sql: 'SELECT * FROM staff WHERE id = ?',
-    args: [req.params.id]
-  });
-
-  if (result.rows.length === 0) {
-    return res.status(404).json({ error: 'Staff tidak ditemukan' });
-  }
-
-  res.json(result.rows[0]);
-}));
-
-// Create staff
-app.post('/api/staff', authMiddleware, asyncHandler(async (req, res) => {
-  const {
-    name,
-    position,
-    phone,
-    email,
-    salary,
-    hire_date,
-    status
-  } = req.body;
-
-  if (!name || !position || !phone || !salary) {
-    return res.status(400).json({ error: 'Field wajib diisi' });
-  }
-
-  const staff_id = `STF-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
-
-  const result = await db.execute({
-    sql: `INSERT INTO staff 
-          (staff_id, name, position, phone, email, salary, hire_date, status)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    args: [
-      staff_id,
-      name,
-      position,
-      phone,
-      email || '',
-      salary,
-      hire_date,
-      status || 'active'
-    ]
-  });
-
-  res.status(201).json({
-    message: 'Staff berhasil ditambahkan',
-    staff_id: result.lastInsertRowid,
-    stf_id: staff_id
-  });
-}));
-
-// Update staff
-app.put('/api/staff/:id', authMiddleware, asyncHandler(async (req, res) => {
-  const { name, position, phone, email, salary, hire_date, status } = req.body;
-
-  const result = await db.execute({
-    sql: 'SELECT * FROM staff WHERE id = ?',
-    args: [req.params.id]
-  });
-
-  if (result.rows.length === 0) {
-    return res.status(404).json({ error: 'Staff tidak ditemukan' });
-  }
-
-  const staff = result.rows[0];
-
-  await db.execute({
-    sql: `UPDATE staff 
-          SET name = ?, position = ?, phone = ?, email = ?, salary = ?, hire_date = ?, status = ?, updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?`,
-    args: [
-      name || staff.name,
-      position || staff.position,
-      phone || staff.phone,
-      email !== undefined ? email : staff.email,
-      salary !== undefined ? salary : staff.salary,
-      hire_date || staff.hire_date,
-      status || staff.status,
-      req.params.id
-    ]
-  });
-
-  res.json({ message: 'Staff berhasil diperbarui' });
-}));
-
-// Delete staff
-app.delete('/api/staff/:id', authMiddleware, asyncHandler(async (req, res) => {
-  const result = await db.execute({
-    sql: 'SELECT * FROM staff WHERE id = ?',
-    args: [req.params.id]
-  });
-
-  if (result.rows.length === 0) {
-    return res.status(404).json({ error: 'Staff tidak ditemukan' });
-  }
-
-  await db.execute({
-    sql: 'DELETE FROM staff WHERE id = ?',
-    args: [req.params.id]
-  });
-
-  res.json({ message: 'Staff berhasil dihapus' });
-}));
-```
-
-Append chunk 3 - Services routes:
-```javascript
-// ============ SERVICES ROUTES ============
-
-// Get all services
-app.get('/api/services', authMiddleware, asyncHandler(async (req, res) => {
-  const { active } = req.query;
-
-  let query = 'SELECT * FROM services WHERE 1=1';
-  const args = [];
-
-  if (active !== undefined) {
-    query += ' AND active = ?';
-    args.push(active === 'true' ? 1 : 0);
-  }
-
-  query += ' ORDER BY created_at DESC';
-
-  const result = await db.execute({ sql: query, args });
-  res.json(result.rows);
-}));
-
-// Get single service
-app.get('/api/services/:id', authMiddleware, asyncHandler(async (req, res) => {
-  const result = await db.execute({
-    sql: 'SELECT * FROM services WHERE id = ?',
-    args: [req.params.id]
-  });
-
-  if (result.rows.length === 0) {
-    return res.status(404).json({ error: 'Layanan tidak ditemukan' });
-  }
-
-  res.json(result.rows[0]);
-}));
-
-// Create service
-app.post('/api/services', authMiddleware, asyncHandler(async (req, res) => {
-  const {
-    name,
-    price_per_kg,
-    turnaround_days,
-    description,
-    active
-  } = req.body;
-
-  if (!name || !price_per_kg || !turnaround_days) {
-    return res.status(400).json({ error: 'Field wajib diisi' });
-  }
-
-  const service_id = `SVC-${Date.now()}-${Math.random().toString(36).substr(2, 5).toUpperCase()}`;
-
-  const result = await db.execute({
-    sql: `INSERT INTO services 
-          (service_id, name, price_per_kg, turnaround_days, description, active)
-          VALUES (?, ?, ?, ?, ?, ?)`,
-    args: [
-      service_id,
-      name,
-      price_per_kg,
-      turnaround_days,
-      description || '',
-      active !== false ? 1 : 0
-    ]
-  });
-
-  res.status(201).json({
-    message: 'Layanan berhasil dibuat',
-    service_id: result.lastInsertRowid,
-    svc_id: service_id
-  });
-}));
-
-// Update service
-app.put('/api/services/:id', authMiddleware, asyncHandler(async (req, res) => {
-  const { name, price_per_kg, turnaround_days, description, active } = req.body;
-
-  const result = await db.execute({
-    sql: 'SELECT * FROM services WHERE id = ?',
-    args: [req.params.id]
-  });
-
-  if (result.rows.length === 0) {
-    return res.status(404).json({ error: 'Layanan tidak ditemukan' });
-  }
-
-  const service = result.rows[0];
-
-  await db.execute({
-    sql: `UPDATE services 
-          SET name = ?, price_per_kg = ?, turnaround_days = ?, description = ?, active = ?, updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?`,
-    args: [
-      name || service.name,
-      price_per_kg !== undefined ? price_per_kg : service.price_per_kg,
-      turnaround_days !== undefined ? turnaround_days : service.turnaround_days,
-      description !== undefined ? description : service.description,
-      active !== undefined ? (active ? 1 : 0) : service.active,
-      req.params.id
-    ]
-  });
-
-  res.json({ message: 'Layanan berhasil diperbarui' });
-}));
-
-// Delete service
-app.delete('/api/services/:id', authMiddleware, asyncHandler(async (req, res) => {
-  const result = await db.execute({
-    sql: 'SELECT * FROM services WHERE id = ?',
-    args: [req.params.id]
-  });
-
-  if (result.rows.length === 0) {
-    return res.status(404).json({ error: 'Layanan tidak ditemukan' });
-  }
-
-  await db.execute({
-    sql: 'DELETE FROM services WHERE id = ?',
-    args: [req.params.id]
-  });
-
-  res.json({ message: 'Layanan berhasil dihapus' });
-}));
-
-// ============ PAYMENTS ROUTES ============
-
-// Get all payments with pagination
-app.get('/api/payments', authMiddleware, asyncHandler(async (req, res) => {
-  const { page = 1, limit = 10, status, order_id } = req.query;
-  const offset = (page - 1) * limit;
-
-  let query = 'SELECT * FROM payments WHERE 1=1';
-  const args = [];
-
-  if (status) {
-    query += ' AND status = ?';
-    args.push(status);
-  }
-
-  if (order_id) {
-    query += ' AND order_id = ?';
-    args.push(order_id);
-  }
-
-  query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-  args.push(limit, offset);
-
-  const result = await db.execute({ sql: query, args });
-  
-  const countResult = await db.execute({
-    sql: 'SELECT COUNT(*) as total FROM payments'
-  });
-
-  const total = countResult.rows[0].total;
-
-  res.json({
-    data: result.rows,
-    pagination: {
-      page: parseInt(page),
-      limit: parseInt(limit),
-      total,
-      pages: Math.ceil(total / limit)
+    if (notes !== undefined) {
+      updateQuery += ', notes = ?';
+      params.push(notes);
     }
-  });
-}));
+    if (total_price) {
+      updateQuery += ', total_price = ?';
+      params.push(total_price);
+    }
 
-// Get single payment
-app.get('/api/payments/:id', authMiddleware, asyncHandler(async (req, res) => {
-  const result = await db.execute({
-    sql: 'SELECT * FROM payments WHERE id = ?',
-    args: [req.params.id]
-  });
+    updateQuery += ' WHERE id = ?';
+    params.push(req.params.id);
 
-  if (result.rows.length === 0) {
-    return res.status(404).json({ error: 'Pembayaran tidak ditemukan' });
+    await db.execute(updateQuery, params);
+    res.json({ message: 'Pesanan berhasil diperbarui' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
+});
 
-  res.json(
+app.delete('/api/orders/:id', async (req, res) => {
+  try {
+    await db.execute('DELETE FROM orders WHERE id = ?', [req.params.id]);
+    res.json({ message: 'Pesanan berhasil dihapus' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// CUSTOMERS ENDPOINTS
+app.get('/api/customers', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+    const tenantId = req.query.tenant_id || 'default';
+
+    const customers = await db.execute(
+      `SELECT * FROM customers WHERE tenant_id = ? OR tenant_id IS NULL ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      [tenantId, limit, offset]
+    );
+
+    const countResult = await db.execute(
+      'SELECT COUNT(*) as total FROM customers WHERE tenant_id = ? OR tenant_id IS NULL',
+      [tenantId]
+    );
+    const total = countResult.rows[0].total;
+
+    res.json({
+      data: customers.rows,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/customers/:id', async (req, res) => {
+  try {
+    const result = await db.execute('SELECT * FROM customers WHERE id = ?', [req.params.id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Pelanggan tidak ditemukan' });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/customers', async (req, res) => {
+  try {
+    const { name, phone, email, address, city, registration_date } = req.body;
+    const customer_id = `CUST-${Math.random().toString().slice(2, 6)}`;
+    const tenantId = req.body.tenant_id || 'default';
+
+    const result = await db.execute(
+      `INSERT INTO customers (customer_id, name, phone, email, address, city, registration_date, tenant_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [customer_id, name, phone, email || '', address, city, registration_date || new Date().toISOString().split('T')[0], tenantId]
+    );
+
+    res.status(201).json({ id: result.lastInsertRowid, customer_id, message: 'Pelanggan berhasil ditambahkan' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/customers/:id', async (req, res) => {
+  try {
+    const { name, phone, email, address, city, loyalty_points } = req.body;
+
+    let updateQuery = 'UPDATE customers SET updated_at = CURRENT_TIMESTAMP';
+    const params = [];
+
+    if (name) {
+      updateQuery += ', name = ?';
+      params.push(name);
+    }
+    if (phone) {
+      updateQuery += ', phone = ?';
+      params.push(phone);
+    }
+    if (email) {
+      updateQuery += ', email = ?';
+      params.push(email);
+    }
+    if (address) {
+      updateQuery += ', address = ?';
+      params.push(address);
+    }
+    if (city) {
+      updateQuery += ', city = ?';
+      params.push(city);
+    }
+    if (loyalty_points !== undefined) {
+      updateQuery += ', loyalty_points = ?';
+      params.push(loyalty_points);
+    }
+
+    updateQuery += ' WHERE id = ?';
+    params.push(req.params.id);
+
+    await db.execute(updateQuery, params);
+    res.json({ message: 'Pelanggan berhasil diperbarui' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/customers/:id', async (req, res) => {
+  try {
+    await db.execute('DELETE FROM customers WHERE id = ?', [req.params.id]);
+    res.json({ message: 'Pelanggan berhasil dihapus' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// EMPLOYEES ENDPOINTS
+app.get('/api/employees', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+    const branch_id = req.query.branch_id;
+    const tenantId = req.query.tenant_id || 'default';
+
+    let query = 'SELECT * FROM employees WHERE tenant_id = ? OR tenant_id IS NULL';
+    let countQuery = 'SELECT COUNT(*) as total FROM employees WHERE tenant_id = ? OR tenant_id IS NULL';
+    const params = [tenantId];
+
+    if (branch_id) {
+      query += ' AND branch_id = ?';
+      countQuery += ' AND branch_id = ?';
+      params.push(branch_id);
+    }
+
+    query += ` ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`;
+
+    const employees = await db.execute(query, params);
+    const countResult = await db.execute(countQuery, params);
+    const total = countResult.rows[0].total;
+
+    res.json({
+      data: employees.rows,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/employees/:id', async (req, res) => {
+  try {
+    const result = await db.execute('SELECT * FROM employees WHERE id = ?', [req.params.id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Karyawan tidak ditemukan' });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/employees', async (req, res) => {
+  try {
+    const { name, position, phone, email, hire_date, salary, branch_id } = req.body;
+    const employee_id = `EMP-${Math.random().toString().slice(2, 6)}`;
+    const tenantId = req.body.tenant_id || 'default';
+
+    const result = await db.execute(
+      `INSERT INTO employees (employee_id, name, position, phone, email, hire_date, salary, status, branch_id, tenant_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [employee_id, name, position, phone, email, hire_date, salary, 'active', branch_id || '', tenantId]
+    );
+
+    res.status(201).json({ id: result.lastInsertRowid, employee_id, message: 'Karyawan berhasil ditambahkan' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/employees/:id', async (req, res) => {
+  try {
+    const { name, position, phone, email, salary, status } = req.body;
+
+    let updateQuery = 'UPDATE employees SET updated_at = CURRENT_TIMESTAMP';
+    const params = [];
+
+    if (name) {
+      updateQuery += ', name = ?';
+      params.push(name);
+    }
+    if (position) {
+      updateQuery += ', position = ?';
+      params.push(position);
+    }
+    if (phone) {
+      updateQuery += ', phone = ?';
+      params.push(phone);
+    }
+    if (email) {
+      updateQuery += ', email = ?';
+      params.push(email);
+    }
+    if (salary) {
+      updateQuery += ', salary = ?';
+      params.push(salary);
+    }
+    if (status) {
+      updateQuery += ', status = ?';
+      params.push(status);
+    }
+
+    updateQuery += ' WHERE id = ?';
+    params.push(req.params.id);
+
+    await db.execute(updateQuery, params);
+    res.json({ message: 'Karyawan berhasil diperbarui' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/employees/:id', async (req, res) => {
+  try {
+    await db.execute('DELETE FROM employees WHERE id = ?', [req.params.id]);
+    res.json({ message: 'Karyawan berhasil dihapus' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// BRANCHES ENDPOINTS
+app.get('/api/branches', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+    const tenantId = req.query.tenant_id || 'default';
+
+    const branches = await db.execute(
+      `SELECT * FROM branches WHERE tenant_id = ? OR tenant_id IS NULL ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      [tenantId, limit, offset]
+    );
+
+    const countResult = await db.execute(
+      'SELECT COUNT(*) as total FROM branches WHERE tenant_id = ? OR tenant_id IS NULL',
+      [tenantId]
+    );
+    const total = countResult.rows[0].total;
+
+    res.json({
+      data: branches.rows,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/branches/:id', async (req, res) => {
+  try {
+    const result = await db.execute('SELECT * FROM branches WHERE id = ?', [req.params.id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Cabang tidak ditemukan' });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/branches', async (req, res) => {
+  try {
+    const { name, address, city, phone, manager_name, operating_hours } = req.body;
+    const branch_id = `BR-${Math.random().toString().slice(2, 6)}`;
+    const tenantId = req.body.tenant_id || 'default';
+
+    const result = await db.execute(
+      `INSERT INTO branches (branch_id, name, address, city, phone, manager_name, operating_hours, tenant_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [branch_id, name, address, city, phone, manager_name || '', operating_hours, tenantId]
+    );
+
+    res.status(201).json({ id: result.lastInsertRowid, branch_id, message: 'Cabang berhasil ditambahkan' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put('/api/branches/:id', async (req, res) => {
+  try {
+    const { name, address, city, phone, manager_name, operating_hours } = req.body;
+
+    let updateQuery = 'UPDATE branches SET updated_at = CURRENT_TIMESTAMP';
+    const params = [];
+
+    if (name) {
+      updateQuery += ', name = ?';
+      params.push(name);
+    }
+    if (address) {
+      updateQuery += ', address = ?';
+      params.push(address);
+    }
+    if (city) {
+      updateQuery += ', city = ?';
+      params.push(city);
+    }
+    if (phone) {
+      updateQuery += ', phone = ?';
+      params.push(phone);
+    }
+    if (manager_name) {
+      updateQuery += ', manager_name = ?';
+      params.push(manager_name);
+    }
+    if (operating_hours) {
+      updateQuery += ', operating_hours = ?';
+      params.push(operating_hours);
+    }
+
+    updateQuery += ' WHERE id = ?';
+    params.push(req.params.id);
+
+    await db.execute(updateQuery, params);
+    res.json({ message: 'Cabang berhasil diperbarui' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/branches/:id', async (req, res) => {
+  try {
+    await db.execute('DELETE FROM branches WHERE id = ?', [req.params.id]);
+    res.json({ message: 'Cabang berhasil dihapus' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// SERVICES ENDPOINTS
+app.get('/api/services', async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const offset = (page - 1) * limit;
+    const tenantId = req.query.tenant_id || 'default';
+
+    const services = await db.execute(
+      `SELECT * FROM services WHERE (tenant_id = ? OR tenant_id IS NULL) AND status = 'active' ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      [tenantId, limit, offset]
+    );
+
+    const countResult = await db.execute(
+      `SELECT COUNT(*) as total FROM services WHERE (tenant_id = ? OR tenant_id IS NULL) AND status = 'active'`,
+      [tenantId]
+    );
+    const total = countResult.rows[0].total;
+
+    res.json({
+      data: services.rows,
+      pagination: { page, limit, total, pages: Math.ceil(total / limit) },
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/services/:id', async (req, res) => {
+  try {
+    const result = await db.execute('SELECT * FROM services WHERE id = ?', [req.params.id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Layanan tidak ditemukan' });
+    }
+    res.json(result.rows[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/services', async (req, res) => {
+  try {
+    const { name, description, price_per_kg, turnaround_days } = req.body;
+    const service_id = `SRV-${Math.random().toString().slice(2, 6)}`;
+    const tenantId = req.body.tenant_id || 'default';
+
+    const result = await db.execute(
+      `INSERT INTO services (service_id, name,
