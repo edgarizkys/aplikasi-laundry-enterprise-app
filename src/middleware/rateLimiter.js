@@ -1,11 +1,12 @@
-// Enterprise Rate Limiter Guard & Security Middleware
+// middleware/rateLimiter.js - Rate Limiting for Aplikasi Laundry Enterprise
+
 const rateLimitMap = new Map();
 
 module.exports = function rateLimiter(req, res, next) {
     const ip = req.ip || req.connection.remoteAddress || '127.0.0.1';
     const now = Date.now();
-    const windowMs = 60 * 1000; // 1 minute window
-    const maxRequests = 100; // Max 100 requests per minute per IP
+    const windowMs = 60 * 1000; // 1 menit
+    const maxRequests = 100;
 
     const record = rateLimitMap.get(ip) || { count: 0, resetTime: now + windowMs };
 
@@ -20,9 +21,14 @@ module.exports = function rateLimiter(req, res, next) {
 
     res.setHeader('X-RateLimit-Limit', maxRequests);
     res.setHeader('X-RateLimit-Remaining', Math.max(0, maxRequests - record.count));
+    res.setHeader('X-RateLimit-Reset', record.resetTime);
 
     if (record.count > maxRequests) {
-        return res.status(429).json({ error: 'Too Many Requests: Rate limit exceeded. Try again in 1 minute.' });
+        return res.status(429).json({
+            error: 'Batas permintaan terlampaui',
+            message: 'Terlalu banyak permintaan. Silakan coba lagi dalam beberapa saat.',
+            retryAfter: Math.ceil((record.resetTime - now) / 1000)
+        });
     }
 
     next();
