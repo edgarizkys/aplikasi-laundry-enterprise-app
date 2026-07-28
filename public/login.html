@@ -7,353 +7,575 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         :root {
-            --accent-from: #3B82F6;
-            --accent-to: #10B981;
+            --accent-from: #6366F1;
+            --accent-to: #06B6D4;
         }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
         .gradient-bg {
             background: linear-gradient(135deg, var(--accent-from), var(--accent-to));
         }
-        .gradient-text {
-            background: linear-gradient(135deg, var(--accent-from), var(--accent-to));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
+        
         .glass {
             background: rgba(255, 255, 255, 0.1);
             backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.2);
         }
-        .input-focus:focus {
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-            border-color: #3B82F6;
+        
+        .login-container {
+            width: 100%;
+            max-width: 450px;
+            padding: 24px;
         }
-        .btn-gradient {
+        
+        .logo-section {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        
+        .logo-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
             background: linear-gradient(135deg, var(--accent-from), var(--accent-to));
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            font-weight: bold;
+            color: white;
+            box-shadow: 0 10px 30px rgba(99, 102, 241, 0.3);
+        }
+        
+        .logo-section h1 {
+            color: white;
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+        
+        .logo-section p {
+            color: #cbd5e1;
+            font-size: 14px;
+        }
+        
+        .login-form {
+            background: rgba(30, 41, 59, 0.8);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 16px;
+            padding: 32px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        
+        .form-group {
+            margin-bottom: 24px;
+        }
+        
+        .form-group label {
+            display: block;
+            color: #e2e8f0;
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 12px 16px;
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            border-radius: 8px;
+            color: white;
+            font-size: 14px;
             transition: all 0.3s ease;
         }
-        .btn-gradient:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 30px rgba(59, 130, 246, 0.3);
+        
+        .form-group input::placeholder {
+            color: #94a3b8;
         }
-        .btn-gradient:active {
+        
+        .form-group input:focus {
+            outline: none;
+            background: rgba(15, 23, 42, 0.8);
+            border-color: var(--accent-from);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+        }
+        
+        .remember-forgot {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            font-size: 14px;
+        }
+        
+        .remember-forgot label {
+            display: flex;
+            align-items: center;
+            color: #cbd5e1;
+            cursor: pointer;
+            margin: 0;
+        }
+        
+        .remember-forgot input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            margin-right: 8px;
+            cursor: pointer;
+            accent-color: var(--accent-from);
+        }
+        
+        .remember-forgot a {
+            color: var(--accent-from);
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+        
+        .remember-forgot a:hover {
+            color: var(--accent-to);
+        }
+        
+        .btn-login {
+            width: 100%;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, var(--accent-from), var(--accent-to));
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+        }
+        
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.6);
+        }
+        
+        .btn-login:active {
             transform: translateY(0);
         }
-        .floating-shapes {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
-            z-index: -1;
+        
+        .btn-login:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
         }
-        .shape {
+        
+        .error-message {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #fca5a5;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        
+        .error-message.show {
+            display: block;
+        }
+        
+        .success-message {
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            color: #86efac;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 20px;
+            display: none;
+        }
+        
+        .success-message.show {
+            display: block;
+        }
+        
+        .signup-link {
+            text-align: center;
+            margin-top: 20px;
+            color: #cbd5e1;
+            font-size: 14px;
+        }
+        
+        .signup-link a {
+            color: var(--accent-from);
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.3s;
+        }
+        
+        .signup-link a:hover {
+            color: var(--accent-to);
+        }
+        
+        .demo-credentials {
+            background: rgba(6, 182, 212, 0.1);
+            border: 1px solid rgba(6, 182, 212, 0.3);
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 24px;
+            font-size: 13px;
+            color: #a5f3fc;
+        }
+        
+        .demo-credentials h4 {
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--accent-to);
+        }
+        
+        .demo-credentials p {
+            margin: 4px 0;
+            color: #cbd5e1;
+        }
+        
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .input-icon {
+            position: relative;
+        }
+        
+        .input-icon svg {
             position: absolute;
-            opacity: 0.05;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 18px;
+            height: 18px;
+            color: #94a3b8;
+            pointer-events: none;
         }
-        .shape-1 {
-            width: 400px;
-            height: 400px;
-            background: #3B82F6;
-            border-radius: 50%;
-            top: -100px;
-            left: -100px;
-            animation: float 20s infinite ease-in-out;
+        
+        .input-icon input {
+            padding-right: 40px;
         }
-        .shape-2 {
-            width: 300px;
-            height: 300px;
-            background: #10B981;
-            border-radius: 50%;
-            bottom: -50px;
-            right: -50px;
-            animation: float 25s infinite ease-in-out reverse;
-        }
-        @keyframes float {
-            0%, 100% { transform: translate(0, 0); }
-            50% { transform: translate(30px, 30px); }
-        }
-        .error-shake {
-            animation: shake 0.5s;
-        }
-        @keyframes shake {
-            0%, 100% { transform: translateX(0); }
-            25% { transform: translateX(-10px); }
-            75% { transform: translateX(10px); }
-        }
-        .password-toggle {
-            cursor: pointer;
-            user-select: none;
+        
+        @media (max-width: 640px) {
+            .login-container {
+                padding: 16px;
+            }
+            
+            .login-form {
+                padding: 24px;
+            }
+            
+            .logo-section h1 {
+                font-size: 24px;
+            }
+            
+            .logo-icon {
+                width: 64px;
+                height: 64px;
+                font-size: 32px;
+            }
         }
     </style>
 </head>
-<body class="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white min-h-screen flex items-center justify-center">
-    <div class="floating-shapes">
-        <div class="shape shape-1"></div>
-        <div class="shape shape-2"></div>
-    </div>
-
-    <div class="w-full max-w-md px-6 relative z-10">
-        <!-- Logo & Header -->
-        <div class="text-center mb-8">
-            <div class="inline-flex items-center justify-center w-16 h-16 gradient-bg rounded-2xl mb-4 shadow-lg">
-                <svg class="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
-                </svg>
-            </div>
-            <h1 class="text-3xl font-bold mb-2">Aplikasi Laundry Enterprise</h1>
-            <p class="text-gray-400">Sistem Manajemen Laundry Terpadu</p>
+<body>
+    <div class="login-container">
+        <!-- Logo Section -->
+        <div class="logo-section">
+            <div class="logo-icon">🧺</div>
+            <h1>Laundry Enterprise</h1>
+            <p>Sistem Manajemen Laundry Modern</p>
         </div>
-
-        <!-- Login Card -->
-        <div class="glass rounded-2xl p-8 shadow-2xl">
-            <form id="loginForm" class="space-y-5">
-                <!-- Email Input -->
-                <div>
-                    <label for="email" class="block text-sm font-semibold text-gray-300 mb-2">
-                        Email atau Username
-                    </label>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.207"/>
-                            </svg>
-                        </div>
-                        <input 
-                            type="email" 
-                            id="email" 
-                            name="email" 
-                            placeholder="nama@laundry.com" 
-                            required
-                            class="input-focus w-full pl-12 pr-4 py-3 bg-gray-700 border border-gray-600 rounded-lg focus:border-transparent outline-none text-white placeholder-gray-500 transition"
-                        >
-                    </div>
-                    <span class="text-red-400 text-xs mt-1 hidden" id="emailError"></span>
-                </div>
-
-                <!-- Password Input -->
-                <div>
-                    <label for="password" class="block text-sm font-semibold text-gray-300 mb-2">
-                        Kata Sandi
-                    </label>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                            <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
-                            </svg>
-                        </div>
-                        <input 
-                            type="password" 
-                            id="password" 
-                            name="password" 
-                            placeholder="••••••••" 
-                            required
-                            class="input-focus w-full pl-12 pr-12 py-3 bg-gray-700 border border-gray-600 rounded-lg focus:border-transparent outline-none text-white placeholder-gray-500 transition"
-                        >
-                        <button 
-                            type="button"
-                            id="togglePassword"
-                            class="password-toggle absolute inset-y-0 right-0 pr-4 flex items-center"
-                            aria-label="Toggle password visibility"
-                        >
-                            <svg class="w-5 h-5 text-gray-400 hover:text-gray-200" id="eyeIcon" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M15.584 10.007L17.592 8c2.546 2.554 4.411 5.716 4.411 9.993 0 8.284-6.716 15-15 15C5.716 33 0 26.284 0 18c0-4.277 1.865-7.439 4.411-9.993L6.42 10.006C4.248 11.856 2.837 14.685 2.837 18c0 6.627 5.373 12 12 12s12-5.373 12-12c0-3.315-1.411-6.144-3.584-7.993h.347zm.563-2.57L12 10.985 7.852 6.837c3.037-1.855 6.27-1.855 9.209 0l.086.6z"/>
-                            </svg>
-                        </button>
-                    </div>
-                    <span class="text-red-400 text-xs mt-1 hidden" id="passwordError"></span>
-                </div>
-
-                <!-- Remember Me & Forgot Password -->
-                <div class="flex items-center justify-between">
-                    <label class="flex items-center">
-                        <input 
-                            type="checkbox" 
-                            id="rememberMe" 
-                            name="rememberMe" 
-                            class="w-4 h-4 rounded border-gray-600 text-blue-500 focus:ring-offset-gray-800 focus:ring-2 cursor-pointer"
-                        >
-                        <span class="ml-2 text-sm text-gray-400 cursor-pointer">Ingat saya</span>
-                    </label>
-                    <a href="#" class="text-sm text-blue-400 hover:text-blue-300 transition">
-                        Lupa kata sandi?
-                    </a>
-                </div>
-
-                <!-- Login Button -->
-                <button 
-                    type="submit" 
-                    id="loginBtn"
-                    class="btn-gradient w-full py-3 rounded-lg font-semibold text-white mb-2 flex items-center justify-center gap-2"
-                >
-                    <span id="btnText">Masuk</span>
-                    <svg id="btnLoader" class="w-5 h-5 hidden animate-spin" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        
+        <!-- Login Form -->
+        <form class="login-form" id="loginForm">
+            <!-- Error Message -->
+            <div class="error-message" id="errorMessage"></div>
+            
+            <!-- Success Message -->
+            <div class="success-message" id="successMessage"></div>
+            
+            <!-- Email Field -->
+            <div class="form-group">
+                <label for="email">Email atau Username</label>
+                <div class="input-icon">
+                    <input
+                        type="text"
+                        id="email"
+                        name="email"
+                        placeholder="Masukkan email atau username Anda"
+                        required
+                        autocomplete="username"
+                    >
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
                     </svg>
-                </button>
-
-                <!-- Error Alert -->
-                <div id="errorAlert" class="hidden bg-red-500 bg-opacity-10 border border-red-500 text-red-200 px-4 py-3 rounded-lg text-sm flex items-start gap-3">
-                    <svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"/>
-                    </svg>
-                    <span id="errorMessage"></span>
-                </div>
-
-                <!-- Success Alert -->
-                <div id="successAlert" class="hidden bg-green-500 bg-opacity-10 border border-green-500 text-green-200 px-4 py-3 rounded-lg text-sm flex items-start gap-3">
-                    <svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
-                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"/>
-                    </svg>
-                    <span id="successMessage"></span>
-                </div>
-            </form>
-
-            <!-- Demo Credentials Hint -->
-            <div class="mt-6 pt-6 border-t border-gray-600">
-                <p class="text-xs text-gray-400 text-center mb-3">Demo Credentials:</p>
-                <div class="space-y-2 text-xs">
-                    <div class="bg-gray-800 rounded p-2 font-mono">
-                        <div class="text-gray-300">Email: <span class="text-blue-300">admin@laundry.com</span></div>
-                        <div class="text-gray-300">Pass: <span class="text-blue-300">password123</span></div>
-                    </div>
-                    <div class="bg-gray-800 rounded p-2 font-mono">
-                        <div class="text-gray-300">Email: <span class="text-green-300">staff@laundry.com</span></div>
-                        <div class="text-gray-300">Pass: <span class="text-green-300">password123</span></div>
-                    </div>
                 </div>
             </div>
-        </div>
-
-        <!-- Footer -->
-        <div class="text-center mt-8">
-            <p class="text-gray-400 text-sm">
-                © 2026 Aplikasi Laundry Enterprise. All rights reserved.
-            </p>
-        </div>
+            
+            <!-- Password Field -->
+            <div class="form-group">
+                <label for="password">Password</label>
+                <div class="input-icon">
+                    <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        placeholder="Masukkan password Anda"
+                        required
+                        autocomplete="current-password"
+                    >
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+                    </svg>
+                </div>
+            </div>
+            
+            <!-- Remember & Forgot -->
+            <div class="remember-forgot">
+                <label>
+                    <input type="checkbox" id="rememberMe" name="rememberMe">
+                    Ingat saya
+                </label>
+                <a href="#" onclick="event.preventDefault(); handleForgotPassword();">Lupa Password?</a>
+            </div>
+            
+            <!-- Login Button -->
+            <button type="submit" class="btn-login" id="loginBtn">
+                <span id="btnText">Masuk</span>
+            </button>
+            
+            <!-- Demo Credentials -->
+            <div class="demo-credentials">
+                <h4>Demo Credentials</h4>
+                <p><strong>Admin:</strong> admin@laundry.com / admin123</p>
+                <p><strong>Staff:</strong> staff@laundry.com / staff123</p>
+            </div>
+        </form>
     </div>
-
+    
     <script>
-        // Password Toggle
-        const togglePasswordBtn = document.getElementById('togglePassword');
-        const passwordInput = document.getElementById('password');
-        const eyeIcon = document.getElementById('eyeIcon');
-
-        togglePasswordBtn.addEventListener('click', () => {
-            const type = passwordInput.getAttribute('type') === 'password' ? 'text' : 'password';
-            passwordInput.setAttribute('type', type);
-            eyeIcon.style.opacity = type === 'text' ? '1' : '0.6';
-        });
-
-        // Form Submission
+        // Configuration
+        const API_BASE = '/api';
+        const SESSION_KEY = 'laundry_session';
+        const TOKEN_KEY = 'laundry_token';
+        
+        // DOM Elements
         const loginForm = document.getElementById('loginForm');
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+        const rememberMeCheckbox = document.getElementById('rememberMe');
         const loginBtn = document.getElementById('loginBtn');
         const btnText = document.getElementById('btnText');
-        const btnLoader = document.getElementById('btnLoader');
-        const errorAlert = document.getElementById('errorAlert');
-        const successAlert = document.getElementById('successAlert');
         const errorMessage = document.getElementById('errorMessage');
         const successMessage = document.getElementById('successMessage');
-
-        loginForm.addEventListener('submit', async (e) => {
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadRememberedEmail();
+            setupEventListeners();
+            checkExistingSession();
+        });
+        
+        // Setup Event Listeners
+        function setupEventListeners() {
+            loginForm.addEventListener('submit', handleLogin);
+            emailInput.addEventListener('focus', () => clearMessages());
+            passwordInput.addEventListener('focus', () => clearMessages());
+        }
+        
+        // Check Existing Session
+        function checkExistingSession() {
+            const token = localStorage.getItem(TOKEN_KEY);
+            if (token) {
+                verifyToken(token);
+            }
+        }
+        
+        // Verify Token
+        function verifyToken(token) {
+            fetch(`${API_BASE}/auth/verify`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success && data.user) {
+                    redirectToDashboard();
+                }
+            })
+            .catch(() => {
+                localStorage.removeItem(TOKEN_KEY);
+            });
+        }
+        
+        // Handle Login
+        async function handleLogin(e) {
             e.preventDefault();
-            errorAlert.classList.add('hidden');
-            successAlert.classList.add('hidden');
-
-            const email = document.getElementById('email').value.trim();
-            const password = document.getElementById('password').value;
-            const rememberMe = document.getElementById('rememberMe').checked;
-
-            // Client-side validation
+            clearMessages();
+            
+            const email = emailInput.value.trim();
+            const password = passwordInput.value;
+            
             if (!email || !password) {
-                showError('Email dan kata sandi harus diisi');
-                loginForm.classList.add('error-shake');
-                setTimeout(() => loginForm.classList.remove('error-shake'), 500);
+                showError('Email/Username dan Password harus diisi');
                 return;
             }
-
-            if (password.length < 6) {
-                showError('Kata sandi minimal 6 karakter');
-                return;
-            }
-
-            // Loading state
-            loginBtn.disabled = true;
-            btnText.classList.add('hidden');
-            btnLoader.classList.remove('hidden');
-
+            
+            setLoading(true);
+            
             try {
-                const response = await fetch('/api/auth/login', {
+                const response = await fetch(`${API_BASE}/auth/login`, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json',
+                        'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        email,
-                        password,
-                        rememberMe
+                        email: email,
+                        password: password,
+                        tenant_id: 'default'
                     })
                 });
-
+                
                 const data = await response.json();
-
+                
                 if (!response.ok) {
-                    throw new Error(data.message || 'Login gagal. Silakan coba lagi.');
+                    throw new Error(data.message || 'Login gagal');
                 }
-
-                // Success
-                showSuccess('Login berhasil! Mengalihkan...');
-                setTimeout(() => {
-                    if (data.redirectUrl) {
-                        window.location.href = data.redirectUrl;
-                    } else {
-                        window.location.href = '/dashboard.html';
+                
+                if (data.success && data.token) {
+                    localStorage.setItem(TOKEN_KEY, data.token);
+                    
+                    if (data.user) {
+                        localStorage.setItem(SESSION_KEY, JSON.stringify(data.user));
                     }
-                }, 1500);
-
+                    
+                    if (rememberMeCheckbox.checked) {
+                        localStorage.setItem('remembered_email', email);
+                    } else {
+                        localStorage.removeItem('remembered_email');
+                    }
+                    
+                    showSuccess('Login berhasil! Mengalihkan...');
+                    
+                    setTimeout(() => {
+                        redirectToDashboard();
+                    }, 1000);
+                } else {
+                    throw new Error(data.message || 'Login gagal');
+                }
             } catch (error) {
+                console.error('Login error:', error);
                 showError(error.message || 'Terjadi kesalahan. Silakan coba lagi.');
-                loginForm.classList.add('error-shake');
-                setTimeout(() => loginForm.classList.remove('error-shake'), 500);
             } finally {
-                loginBtn.disabled = false;
-                btnText.classList.remove('hidden');
-                btnLoader.classList.add('hidden');
+                setLoading(false);
             }
-        });
-
+        }
+        
+        // Load Remembered Email
+        function loadRememberedEmail() {
+            const rememberedEmail = localStorage.getItem('remembered_email');
+            if (rememberedEmail) {
+                emailInput.value = rememberedEmail;
+                rememberMeCheckbox.checked = true;
+            }
+        }
+        
+        // Show Error Message
         function showError(message) {
             errorMessage.textContent = message;
-            errorAlert.classList.remove('hidden');
-            successAlert.classList.add('hidden');
+            errorMessage.classList.add('show');
         }
-
+        
+        // Show Success Message
         function showSuccess(message) {
             successMessage.textContent = message;
-            successAlert.classList.remove('hidden');
-            errorAlert.classList.add('hidden');
+            successMessage.classList.add('show');
         }
-
-        // Demo credentials auto-fill (for testing)
-        const demoButtons = document.querySelectorAll('.font-mono');
-        demoButtons.forEach((btn, index) => {
-            btn.style.cursor = 'pointer';
-            btn.addEventListener('click', () => {
-                if (index === 0) {
-                    document.getElementById('email').value = 'admin@laundry.com';
-                    document.getElementById('password').value = 'password123';
-                } else {
-                    document.getElementById('email').value = 'staff@laundry.com';
-                    document.getElementById('password').value = 'password123';
-                }
-            });
-        });
-
-        // Enter key submit
-        passwordInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
+        
+        // Clear Messages
+        function clearMessages() {
+            errorMessage.classList.remove('show');
+            successMessage.classList.remove('show');
+        }
+        
+        // Set Loading State
+        function setLoading(isLoading) {
+            loginBtn.disabled = isLoading;
+            if (isLoading) {
+                btnText.innerHTML = '<span class="loading-spinner"></span>Memproses...';
+            } else {
+                btnText.textContent = 'Masuk';
+            }
+        }
+        
+        // Handle Forgot Password
+        function handleForgotPassword() {
+            const email = prompt('Masukkan email Anda untuk reset password:');
+            if (email) {
+                clearMessages();
+                setLoading(true);
+                
+                fetch(`${API_BASE}/auth/forgot-password`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ email: email })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        showSuccess('Instruksi reset password telah dikirim ke email Anda');
+                    } else {
+                        showError(data.message || 'Gagal mengirim instruksi reset');
+                    }
+                })
+                .catch(err => {
+                    showError('Terjadi kesalahan. Silakan coba lagi.');
+                })
+                .finally(() => setLoading(false));
+            }
+        }
+        
+        // Redirect to Dashboard
+        function redirectToDashboard() {
+            window.location.href = '/dashboard.html';
+        }
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && document.activeElement !== loginBtn) {
                 loginForm.dispatchEvent(new Event('submit'));
             }
         });
