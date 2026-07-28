@@ -1,1083 +1,645 @@
-// api.js - Laundry Enterprise API Routes and Controllers
-const express = require('express');
-const router = express.Router();
-const { tursoClient } = require('../config/database');
+// api/api.js - API Client for Laundry Enterprise Application
 
-// ============================================================================
-// MIDDLEWARE
-// ============================================================================
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
-const getTenantId = (req) => req.headers['x-tenant-id'] || 'default_tenant';
+// Helper function for API requests
+const apiRequest = async (endpoint, options = {}) => {
+    const {
+        method = 'GET',
+        body = null,
+        headers = {},
+        params = {}
+    } = options;
 
-const handleError = (res, error, statusCode = 500) => {
-  console.error('API Error:', error);
-  res.status(statusCode).json({
-    success: false,
-    error: error.message || 'Terjadi kesalahan pada server'
-  });
+    try {
+        let url = `${API_BASE_URL}${endpoint}`;
+        
+        // Add query parameters
+        if (Object.keys(params).length > 0) {
+            const queryString = new URLSearchParams(params).toString();
+            url = `${url}?${queryString}`;
+        }
+
+        const requestOptions = {
+            method,
+            headers: {
+                'Content-Type': 'application/json',
+                'x-tenant-id': localStorage.getItem('tenantId') || 'default_tenant',
+                ...headers
+            }
+        };
+
+        if (body) {
+            requestOptions.body = JSON.stringify(body);
+        }
+
+        const response = await fetch(url, requestOptions);
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || `HTTP Error: ${response.status}`);
+        }
+
+        return await response.json();
+    } catch (error) {
+        console.error('API Request Error:', error);
+        throw error;
+    }
 };
 
-// ============================================================================
-// ORDERS ENDPOINTS
-// ============================================================================
+// ==================== ORDERS API ====================
 
-// GET all orders with pagination
-router.get('/orders', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req);
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const offset = (page - 1) * limit;
-    const status = req.query.status;
+export const ordersAPI = {
+    // Get all orders with pagination
+    getAll: (page = 1, limit = 20, filters = {}) => {
+        const params = { page, limit, ...filters };
+        return apiRequest('/orders', { params });
+    },
 
-    let sql = 'SELECT * FROM orders WHERE tenant_id = ?';
-    let args = [tenantId];
+    // Get single order by ID
+    getById: (orderId) => {
+        return apiRequest(`/orders/${orderId}`);
+    },
 
-    if (status) {
-      sql += ' AND status = ?';
-      args.push(status);
+    // Create new order
+    create: (orderData) => {
+        return apiRequest('/orders', {
+            method: 'POST',
+            body: orderData
+        });
+    },
+
+    // Update order
+    update: (orderId, orderData) => {
+        return apiRequest(`/orders/${orderId}`, {
+            method: 'PUT',
+            body: orderData
+        });
+    },
+
+    // Delete order
+    delete: (orderId) => {
+        return apiRequest(`/orders/${orderId}`, {
+            method: 'DELETE'
+        });
+    },
+
+    // Search orders
+    search: (searchTerm) => {
+        return apiRequest('/orders/search', {
+            params: { q: searchTerm }
+        });
+    },
+
+    // Get orders by status
+    getByStatus: (status, page = 1, limit = 20) => {
+        return apiRequest('/orders/status/' + status, {
+            params: { page, limit }
+        });
+    },
+
+    // Update order status
+    updateStatus: (orderId, status) => {
+        return apiRequest(`/orders/${orderId}/status`, {
+            method: 'PUT',
+            body: { status }
+        });
+    },
+
+    // Update payment status
+    updatePaymentStatus: (orderId, paymentStatus) => {
+        return apiRequest(`/orders/${orderId}/payment-status`, {
+            method: 'PUT',
+            body: { payment_status: paymentStatus }
+        });
+    },
+
+    // Get order by number
+    getByOrderNumber: (orderNumber) => {
+        return apiRequest(`/orders/number/${orderNumber}`);
+    },
+
+    // Assign to delivery
+    assignDelivery: (orderId, deliveryData) => {
+        return apiRequest(`/orders/${orderId}/assign-delivery`, {
+            method: 'POST',
+            body: deliveryData
+        });
     }
+};
 
-    sql += ' ORDER BY id DESC LIMIT ? OFFSET ?';
-    args.push(limit, offset);
+// ==================== CUSTOMERS API ====================
 
-    const result = await tursoClient.execute({
-      sql,
-      args
-    });
+export const customersAPI = {
+    // Get all customers with pagination
+    getAll: (page = 1, limit = 20) => {
+        return apiRequest('/customers', {
+            params: { page, limit }
+        });
+    },
 
-    let countSql = 'SELECT COUNT(*) as total FROM orders WHERE tenant_id = ?';
-    let countArgs = [tenantId];
+    // Get single customer by ID
+    getById: (customerId) => {
+        return apiRequest(`/customers/${customerId}`);
+    },
 
-    if (status) {
-      countSql += ' AND status = ?';
-      countArgs.push(status);
+    // Create new customer
+    create: (customerData) => {
+        return apiRequest('/customers', {
+            method: 'POST',
+            body: customerData
+        });
+    },
+
+    // Update customer
+    update: (customerId, customerData) => {
+        return apiRequest(`/customers/${customerId}`, {
+            method: 'PUT',
+            body: customerData
+        });
+    },
+
+    // Delete customer
+    delete: (customerId) => {
+        return apiRequest(`/customers/${customerId}`, {
+            method: 'DELETE'
+        });
+    },
+
+    // Search customers
+    search: (searchTerm) => {
+        return apiRequest('/customers/search', {
+            params: { q: searchTerm }
+        });
+    },
+
+    // Get customer by phone
+    getByPhone: (phone) => {
+        return apiRequest(`/customers/phone/${phone}`);
+    },
+
+    // Get customer loyalty points
+    getLoyaltyPoints: (customerId) => {
+        return apiRequest(`/customers/${customerId}/loyalty-points`);
+    },
+
+    // Add loyalty points
+    addLoyaltyPoints: (customerId, points) => {
+        return apiRequest(`/customers/${customerId}/loyalty-points`, {
+            method: 'POST',
+            body: { points }
+        });
+    },
+
+    // Get customer orders history
+    getOrderHistory: (customerId, page = 1, limit = 10) => {
+        return apiRequest(`/customers/${customerId}/orders`, {
+            params: { page, limit }
+        });
     }
+};
 
-    const countResult = await tursoClient.execute({
-      sql: countSql,
-      args: countArgs
-    });
+// ==================== EMPLOYEES API ====================
 
-    res.json({
-      success: true,
-      data: result.rows,
-      pagination: {
-        page,
-        limit,
-        total: countResult.rows[0].total,
-        pages: Math.ceil(countResult.rows[0].total / limit)
-      }
-    });
-  } catch (error) {
-    handleError(res, error);
-  }
-});
+export const employeesAPI = {
+    // Get all employees with pagination
+    getAll: (page = 1, limit = 20) => {
+        return apiRequest('/employees', {
+            params: { page, limit }
+        });
+    },
 
-// GET single order by ID
-router.get('/orders/:id', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req);
-    const { id } = req.params;
+    // Get single employee by ID
+    getById: (employeeId) => {
+        return apiRequest(`/employees/${employeeId}`);
+    },
 
-    const result = await tursoClient.execute({
-      sql: 'SELECT * FROM orders WHERE id = ? AND tenant_id = ?',
-      args: [id, tenantId]
-    });
+    // Create new employee
+    create: (employeeData) => {
+        return apiRequest('/employees', {
+            method: 'POST',
+            body: employeeData
+        });
+    },
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Pesanan tidak ditemukan'
-      });
+    // Update employee
+    update: (employeeId, employeeData) => {
+        return apiRequest(`/employees/${employeeId}`, {
+            method: 'PUT',
+            body: employeeData
+        });
+    },
+
+    // Delete employee
+    delete: (employeeId) => {
+        return apiRequest(`/employees/${employeeId}`, {
+            method: 'DELETE'
+        });
+    },
+
+    // Search employees
+    search: (searchTerm) => {
+        return apiRequest('/employees/search', {
+            params: { q: searchTerm }
+        });
+    },
+
+    // Get employees by position
+    getByPosition: (position, page = 1, limit = 20) => {
+        return apiRequest('/employees/position/' + position, {
+            params: { page, limit }
+        });
+    },
+
+    // Update employee status
+    updateStatus: (employeeId, status) => {
+        return apiRequest(`/employees/${employeeId}/status`, {
+            method: 'PUT',
+            body: { status }
+        });
+    },
+
+    // Get employees by branch
+    getByBranch: (branchId, page = 1, limit = 20) => {
+        return apiRequest(`/employees/branch/${branchId}`, {
+            params: { page, limit }
+        });
     }
+};
 
-    res.json({
-      success: true,
-      data: result.rows[0]
-    });
-  } catch (error) {
-    handleError(res, error);
-  }
-});
+// ==================== BRANCHES API ====================
 
-// CREATE new order
-router.post('/orders', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req);
-    const {
-      order_number,
-      customer_id,
-      customer_name,
-      phone,
-      items_count,
-      weight_kg,
-      service_type,
-      total_price,
-      pickup_date,
-      delivery_date,
-      assigned_staff,
-      notes
-    } = req.body;
+export const branchesAPI = {
+    // Get all branches
+    getAll: (page = 1, limit = 50) => {
+        return apiRequest('/branches', {
+            params: { page, limit }
+        });
+    },
 
-    if (!order_number || !customer_name || !phone || !weight_kg || !total_price) {
-      return res.status(400).json({
-        success: false,
-        error: 'Data pesanan tidak lengkap'
-      });
+    // Get single branch by ID
+    getById: (branchId) => {
+        return apiRequest(`/branches/${branchId}`);
+    },
+
+    // Create new branch
+    create: (branchData) => {
+        return apiRequest('/branches', {
+            method: 'POST',
+            body: branchData
+        });
+    },
+
+    // Update branch
+    update: (branchId, branchData) => {
+        return apiRequest(`/branches/${branchId}`, {
+            method: 'PUT',
+            body: branchData
+        });
+    },
+
+    // Delete branch
+    delete: (branchId) => {
+        return apiRequest(`/branches/${branchId}`, {
+            method: 'DELETE'
+        });
+    },
+
+    // Search branches
+    search: (searchTerm) => {
+        return apiRequest('/branches/search', {
+            params: { q: searchTerm }
+        });
+    },
+
+    // Get branches by city
+    getByCity: (city) => {
+        return apiRequest(`/branches/city/${city}`);
+    },
+
+    // Get branch statistics
+    getStatistics: (branchId) => {
+        return apiRequest(`/branches/${branchId}/statistics`);
     }
+};
 
-    const result = await tursoClient.execute({
-      sql: `INSERT INTO orders 
-            (tenant_id, order_number, customer_id, customer_name, phone, items_count, 
-             weight_kg, service_type, total_price, status, pickup_date, delivery_date, 
-             assigned_staff, notes, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-      args: [
-        tenantId,
-        order_number,
-        customer_id || null,
-        customer_name,
-        phone,
-        items_count || 0,
-        weight_kg,
-        service_type || 'Regular',
-        total_price,
-        'pending',
-        pickup_date,
-        delivery_date || null,
-        assigned_staff || null,
-        notes || ''
-      ]
-    });
+// ==================== SERVICES API ====================
 
-    res.status(201).json({
-      success: true,
-      data: {
-        id: Number(result.lastInsertRowid),
-        order_number,
-        customer_name,
-        phone,
-        weight_kg,
-        total_price,
-        status: 'pending'
-      }
-    });
-  } catch (error) {
-    handleError(res, error);
-  }
-});
+export const servicesAPI = {
+    // Get all services
+    getAll: (page = 1, limit = 50) => {
+        return apiRequest('/services', {
+            params: { page, limit }
+        });
+    },
 
-// UPDATE order
-router.put('/orders/:id', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req);
-    const { id } = req.params;
-    const updates = req.body;
+    // Get single service by ID
+    getById: (serviceId) => {
+        return apiRequest(`/services/${serviceId}`);
+    },
 
-    const checkResult = await tursoClient.execute({
-      sql: 'SELECT * FROM orders WHERE id = ? AND tenant_id = ?',
-      args: [id, tenantId]
-    });
+    // Create new service
+    create: (serviceData) => {
+        return apiRequest('/services', {
+            method: 'POST',
+            body: serviceData
+        });
+    },
 
-    if (checkResult.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Pesanan tidak ditemukan'
-      });
+    // Update service
+    update: (serviceId, serviceData) => {
+        return apiRequest(`/services/${serviceId}`, {
+            method: 'PUT',
+            body: serviceData
+        });
+    },
+
+    // Delete service
+    delete: (serviceId) => {
+        return apiRequest(`/services/${serviceId}`, {
+            method: 'DELETE'
+        });
+    },
+
+    // Get active services
+    getActive: () => {
+        return apiRequest('/services/status/active');
+    },
+
+    // Update service status
+    updateStatus: (serviceId, status) => {
+        return apiRequest(`/services/${serviceId}/status`, {
+            method: 'PUT',
+            body: { status }
+        });
+    },
+
+    // Calculate price
+    calculatePrice: (weightKg, serviceId) => {
+        return apiRequest('/services/calculate-price', {
+            params: { weight_kg: weightKg, service_id: serviceId }
+        });
     }
+};
 
-    const allowedFields = [
-      'customer_name', 'phone', 'items_count', 'weight_kg', 'service_type',
-      'total_price', 'status', 'pickup_date', 'delivery_date', 'assigned_staff', 'notes'
-    ];
+// ==================== PAYMENTS API ====================
 
-    const fields = [];
-    const values = [];
+export const paymentsAPI = {
+    // Get all payments with pagination
+    getAll: (page = 1, limit = 20) => {
+        return apiRequest('/payments', {
+            params: { page, limit }
+        });
+    },
 
-    Object.keys(updates).forEach(key => {
-      if (allowedFields.includes(key)) {
-        fields.push(`${key} = ?`);
-        values.push(updates[key]);
-      }
-    });
+    // Get single payment by ID
+    getById: (paymentId) => {
+        return apiRequest(`/payments/${paymentId}`);
+    },
 
-    if (fields.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'Tidak ada field yang dapat diperbarui'
-      });
+    // Create new payment
+    create: (paymentData) => {
+        return apiRequest('/payments', {
+            method: 'POST',
+            body: paymentData
+        });
+    },
+
+    // Update payment
+    update: (paymentId, paymentData) => {
+        return apiRequest(`/payments/${paymentId}`, {
+            method: 'PUT',
+            body: paymentData
+        });
+    },
+
+    // Delete payment
+    delete: (paymentId) => {
+        return apiRequest(`/payments/${paymentId}`, {
+            method: 'DELETE'
+        });
+    },
+
+    // Get payments by status
+    getByStatus: (status, page = 1, limit = 20) => {
+        return apiRequest(`/payments/status/${status}`, {
+            params: { page, limit }
+        });
+    },
+
+    // Get payment by order ID
+    getByOrderId: (orderId) => {
+        return apiRequest(`/payments/order/${orderId}`);
+    },
+
+    // Update payment status
+    updateStatus: (paymentId, status) => {
+        return apiRequest(`/payments/${paymentId}/status`, {
+            method: 'PUT',
+            body: { status }
+        });
+    },
+
+    // Get payments by method
+    getByMethod: (method, page = 1, limit = 20) => {
+        return apiRequest(`/payments/method/${method}`, {
+            params: { page, limit }
+        });
+    },
+
+    // Process QRIS payment
+    processQRIS: (paymentData) => {
+        return apiRequest('/payments/qris', {
+            method: 'POST',
+            body: paymentData
+        });
+    },
+
+    // Process bank transfer
+    processBankTransfer: (paymentData) => {
+        return apiRequest('/payments/bank-transfer', {
+            method: 'POST',
+            body: paymentData
+        });
     }
+};
 
-    fields.push('updated_at = datetime("now")');
-    values.push(id, tenantId);
+// ==================== ANALYTICS API ====================
 
-    await tursoClient.execute({
-      sql: `UPDATE orders SET ${fields.join(', ')} WHERE id = ? AND tenant_id = ?`,
-      args: values
-    });
+export const analyticsAPI = {
+    // Get dashboard summary
+    getDashboardSummary: () => {
+        return apiRequest('/analytics/dashboard');
+    },
 
-    res.json({
-      success: true,
-      data: { id, ...updates }
-    });
-  } catch (error) {
-    handleError(res, error);
-  }
-});
+    // Get revenue report
+    getRevenueReport: (startDate, endDate) => {
+        return apiRequest('/analytics/revenue', {
+            params: { start_date: startDate, end_date: endDate }
+        });
+    },
 
-// DELETE order
-router.delete('/orders/:id', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req);
-    const { id } = req.params;
+    // Get orders report
+    getOrdersReport: (startDate, endDate) => {
+        return apiRequest('/analytics/orders', {
+            params: { start_date: startDate, end_date: endDate }
+        });
+    },
 
-    const result = await tursoClient.execute({
-      sql: 'DELETE FROM orders WHERE id = ? AND tenant_id = ?',
-      args: [id, tenantId]
-    });
+    // Get customer report
+    getCustomerReport: () => {
+        return apiRequest('/analytics/customers');
+    },
 
-    if (result.rowsChanged === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Pesanan tidak ditemukan'
-      });
+    // Get branch performance
+    getBranchPerformance: (startDate, endDate) => {
+        return apiRequest('/analytics/branch-performance', {
+            params: { start_date: startDate, end_date: endDate }
+        });
+    },
+
+    // Get service statistics
+    getServiceStatistics: () => {
+        return apiRequest('/analytics/services');
+    },
+
+    // Get payment statistics
+    getPaymentStatistics: (startDate, endDate) => {
+        return apiRequest('/analytics/payments', {
+            params: { start_date: startDate, end_date: endDate }
+        });
     }
+};
 
-    res.json({
-      success: true,
-      message: 'Pesanan berhasil dihapus'
-    });
-  } catch (error) {
-    handleError(res, error);
-  }
-});
+// ==================== INVOICES API ====================
 
-// ============================================================================
-// CUSTOMERS ENDPOINTS
-// ============================================================================
+export const invoicesAPI = {
+    // Generate invoice
+    generate: (orderId) => {
+        return apiRequest(`/invoices/generate/${orderId}`, {
+            method: 'POST'
+        });
+    },
 
-// GET all customers
-router.get('/customers', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req);
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const offset = (page - 1) * limit;
+    // Get invoice
+    getById: (invoiceId) => {
+        return apiRequest(`/invoices/${invoiceId}`);
+    },
 
-    const result = await tursoClient.execute({
-      sql: 'SELECT * FROM customers WHERE tenant_id = ? ORDER BY id DESC LIMIT ? OFFSET ?',
-      args: [tenantId, limit, offset]
-    });
+    // Download invoice PDF
+    downloadPDF: (invoiceId) => {
+        const tenantId = localStorage.getItem('tenantId') || 'default_tenant';
+        window.location.href = `${API_BASE_URL}/invoices/${invoiceId}/pdf?x-tenant-id=${tenantId}`;
+    },
 
-    const countResult = await tursoClient.execute({
-      sql: 'SELECT COUNT(*) as total FROM customers WHERE tenant_id = ?',
-      args: [tenantId]
-    });
+    // Get invoices by order
+    getByOrderId: (orderId) => {
+        return apiRequest(`/invoices/order/${orderId}`);
+    },
 
-    res.json({
-      success: true,
-      data: result.rows,
-      pagination: {
-        page,
-        limit,
-        total: countResult.rows[0].total,
-        pages: Math.ceil(countResult.rows[0].total / limit)
-      }
-    });
-  } catch (error) {
-    handleError(res, error);
-  }
-});
-
-// GET single customer
-router.get('/customers/:id', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req);
-    const { id } = req.params;
-
-    const result = await tursoClient.execute({
-      sql: 'SELECT * FROM customers WHERE id = ? AND tenant_id = ?',
-      args: [id, tenantId]
-    });
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Pelanggan tidak ditemukan'
-      });
+    // Send invoice via email
+    sendEmail: (invoiceId, email) => {
+        return apiRequest(`/invoices/${invoiceId}/send-email`, {
+            method: 'POST',
+            body: { email }
+        });
     }
+};
 
-    res.json({
-      success: true,
-      data: result.rows[0]
-    });
-  } catch (error) {
-    handleError(res, error);
-  }
-});
+// ==================== NOTIFICATIONS API ====================
 
-// CREATE customer
-router.post('/customers', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req);
-    const {
-      customer_id,
-      name,
-      phone,
-      email,
-      address,
-      member_tier,
-      joined_date
-    } = req.body;
+export const notificationsAPI = {
+    // Send SMS notification
+    sendSMS: (phone, message) => {
+        return apiRequest('/notifications/sms', {
+            method: 'POST',
+            body: { phone, message }
+        });
+    },
 
-    if (!customer_id || !name || !phone) {
-      return res.status(400).json({
-        success: false,
-        error: 'Data pelanggan tidak lengkap'
-      });
+    // Send order status notification
+    sendOrderStatus: (orderId, phone) => {
+        return apiRequest(`/notifications/order-status/${orderId}`, {
+            method: 'POST',
+            body: { phone }
+        });
+    },
+
+    // Send payment reminder
+    sendPaymentReminder: (orderId, phone) => {
+        return apiRequest(`/notifications/payment-reminder/${orderId}`, {
+            method: 'POST',
+            body: { phone }
+        });
+    },
+
+    // Send delivery notification
+    sendDeliveryNotification: (orderId, phone) => {
+        return apiRequest(`/notifications/delivery/${orderId}`, {
+            method: 'POST',
+            body: { phone }
+        });
+    },
+
+    // Send email notification
+    sendEmail: (email, subject, message) => {
+        return apiRequest('/notifications/email', {
+            method: 'POST',
+            body: { email, subject, message }
+        });
     }
+};
 
-    const result = await tursoClient.execute({
-      sql: `INSERT INTO customers 
-            (tenant_id, customer_id, name, phone, email, address, loyalty_points, 
-             total_spent, member_tier, joined_date, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-      args: [
-        tenantId,
-        customer_id,
-        name,
-        phone,
-        email || null,
-        address || null,
-        0,
-        0,
-        member_tier || 'Bronze',
-        joined_date || new Date().toISOString().split('T')[0]
-      ]
-    });
+// ==================== REPORTS API ====================
 
-    res.status(201).json({
-      success: true,
-      data: {
-        id: Number(result.lastInsertRowid),
-        customer_id,
-        name,
-        phone,
-        loyalty_points: 0,
-        total_spent: 0,
-        member_tier: member_tier || 'Bronze'
-      }
-    });
-  } catch (error) {
-    handleError(res, error);
-  }
-});
+export const reportsAPI = {
+    // Export orders to CSV
+    exportOrders: (startDate, endDate) => {
+        const tenantId = localStorage.getItem('tenantId') || 'default_tenant';
+        window.location.href = `${API_BASE_URL}/reports/orders/csv?start_date=${startDate}&end_date=${endDate}&x-tenant-id=${tenantId}`;
+    },
 
-// UPDATE customer
-router.put('/customers/:id', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req);
-    const { id } = req.params;
-    const updates = req.body;
+    // Export payments to CSV
+    exportPayments: (startDate, endDate) => {
+        const tenantId = localStorage.getItem('tenantId') || 'default_tenant';
+        window.location.href = `${API_BASE_URL}/reports/payments/csv?start_date=${startDate}&end_date=${endDate}&x-tenant-id=${tenantId}`;
+    },
 
-    const checkResult = await tursoClient.execute({
-      sql: 'SELECT * FROM customers WHERE id = ? AND tenant_id = ?',
-      args: [id, tenantId]
-    });
+    // Export customers to CSV
+    exportCustomers: () => {
+        const tenantId = localStorage.getItem('tenantId') || 'default_tenant';
+        window.location.href = `${API_BASE_URL}/reports/customers/csv?x-tenant-id=${tenantId}`;
+    },
 
-    if (checkResult.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Pelanggan tidak ditemukan'
-      });
+    // Get revenue summary
+    getRevenueSummary: (startDate, endDate) => {
+        return apiRequest('/reports/revenue-summary', {
+            params: { start_date: startDate, end_date: endDate }
+        });
+    },
+
+    // Get top customers
+    getTopCustomers: (limit = 10) => {
+        return apiRequest('/reports/top-customers', {
+            params: { limit }
+        });
+    },
+
+    // Get pending orders
+    getPendingOrders: () => {
+        return apiRequest('/reports/pending-orders');
     }
-
-    const allowedFields = [
-      'name', 'phone', 'email', 'address', 'loyalty_points', 
-      'total_spent', 'member_tier'
-    ];
-
-    const fields = [];
-    const values = [];
-
-    Object.keys(updates).forEach(key => {
-      if (allowedFields.includes(key)) {
-        fields.push(`${key} = ?`);
-        values.push(updates[key]);
-      }
-    });
-
-    if (fields.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'Tidak ada field yang dapat diperbarui'
-      });
-    }
-
-    fields.push('updated_at = datetime("now")');
-    values.push(id, tenantId);
-
-    await tursoClient.execute({
-      sql: `UPDATE customers SET ${fields.join(', ')} WHERE id = ? AND tenant_id = ?`,
-      args: values
-    });
-
-    res.json({
-      success: true,
-      data: { id, ...updates }
-    });
-  } catch (error) {
-    handleError(res, error);
-  }
-});
-
-// DELETE customer
-router.delete('/customers/:id', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req);
-    const { id } = req.params;
-
-    const result = await tursoClient.execute({
-      sql: 'DELETE FROM customers WHERE id = ? AND tenant_id = ?',
-      args: [id, tenantId]
-    });
-
-    if (result.rowsChanged === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Pelanggan tidak ditemukan'
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Pelanggan berhasil dihapus'
-    });
-  } catch (error) {
-    handleError(res, error);
-  }
-});
-
-// ============================================================================
-// STAFF ENDPOINTS
-// ============================================================================
-
-// GET all staff
-router.get('/staff', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req);
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const offset = (page - 1) * limit;
-    const status = req.query.status;
-
-    let sql = 'SELECT * FROM staff WHERE tenant_id = ?';
-    let args = [tenantId];
-
-    if (status) {
-      sql += ' AND status = ?';
-      args.push(status);
-    }
-
-    sql += ' ORDER BY id DESC LIMIT ? OFFSET ?';
-    args.push(limit, offset);
-
-    const result = await tursoClient.execute({
-      sql,
-      args
-    });
-
-    let countSql = 'SELECT COUNT(*) as total FROM staff WHERE tenant_id = ?';
-    let countArgs = [tenantId];
-
-    if (status) {
-      countSql += ' AND status = ?';
-      countArgs.push(status);
-    }
-
-    const countResult = await tursoClient.execute({
-      sql: countSql,
-      args: countArgs
-    });
-
-    res.json({
-      success: true,
-      data: result.rows,
-      pagination: {
-        page,
-        limit,
-        total: countResult.rows[0].total,
-        pages: Math.ceil(countResult.rows[0].total / limit)
-      }
-    });
-  } catch (error) {
-    handleError(res, error);
-  }
-});
-
-// GET single staff
-router.get('/staff/:id', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req);
-    const { id } = req.params;
-
-    const result = await tursoClient.execute({
-      sql: 'SELECT * FROM staff WHERE id = ? AND tenant_id = ?',
-      args: [id, tenantId]
-    });
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Staff tidak ditemukan'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: result.rows[0]
-    });
-  } catch (error) {
-    handleError(res, error);
-  }
-});
-
-// CREATE staff
-router.post('/staff', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req);
-    const {
-      staff_id,
-      name,
-      position,
-      phone,
-      email,
-      salary,
-      hire_date
-    } = req.body;
-
-    if (!staff_id || !name || !position) {
-      return res.status(400).json({
-        success: false,
-        error: 'Data staff tidak lengkap'
-      });
-    }
-
-    const result = await tursoClient.execute({
-      sql: `INSERT INTO staff 
-            (tenant_id, staff_id, name, position, phone, email, salary, 
-             hire_date, status, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-      args: [
-        tenantId,
-        staff_id,
-        name,
-        position,
-        phone || null,
-        email || null,
-        salary || 0,
-        hire_date || new Date().toISOString().split('T')[0],
-        'active'
-      ]
-    });
-
-    res.status(201).json({
-      success: true,
-      data: {
-        id: Number(result.lastInsertRowid),
-        staff_id,
-        name,
-        position,
-        status: 'active'
-      }
-    });
-  } catch (error) {
-    handleError(res, error);
-  }
-});
-
-// UPDATE staff
-router.put('/staff/:id', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req);
-    const { id } = req.params;
-    const updates = req.body;
-
-    const checkResult = await tursoClient.execute({
-      sql: 'SELECT * FROM staff WHERE id = ? AND tenant_id = ?',
-      args: [id, tenantId]
-    });
-
-    if (checkResult.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Staff tidak ditemukan'
-      });
-    }
-
-    const allowedFields = [
-      'name', 'position', 'phone', 'email', 'salary', 'status'
-    ];
-
-    const fields = [];
-    const values = [];
-
-    Object.keys(updates).forEach(key => {
-      if (allowedFields.includes(key)) {
-        fields.push(`${key} = ?`);
-        values.push(updates[key]);
-      }
-    });
-
-    if (fields.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'Tidak ada field yang dapat diperbarui'
-      });
-    }
-
-    fields.push('updated_at = datetime("now")');
-    values.push(id, tenantId);
-
-    await tursoClient.execute({
-      sql: `UPDATE staff SET ${fields.join(', ')} WHERE id = ? AND tenant_id = ?`,
-      args: values
-    });
-
-    res.json({
-      success: true,
-      data: { id, ...updates }
-    });
-  } catch (error) {
-    handleError(res, error);
-  }
-});
-
-// DELETE staff
-router.delete('/staff/:id', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req);
-    const { id } = req.params;
-
-    const result = await tursoClient.execute({
-      sql: 'DELETE FROM staff WHERE id = ? AND tenant_id = ?',
-      args: [id, tenantId]
-    });
-
-    if (result.rowsChanged === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Staff tidak ditemukan'
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Staff berhasil dihapus'
-    });
-  } catch (error) {
-    handleError(res, error);
-  }
-});
-
-// ============================================================================
-// SERVICES ENDPOINTS
-// ============================================================================
-
-// GET all services
-router.get('/services', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req);
-    const active = req.query.active;
-
-    let sql = 'SELECT * FROM services WHERE tenant_id = ?';
-    let args = [tenantId];
-
-    if (active !== undefined) {
-      sql += ' AND active = ?';
-      args.push(active === 'true' ? 1 : 0);
-    }
-
-    sql += ' ORDER BY id DESC';
-
-    const result = await tursoClient.execute({
-      sql,
-      args
-    });
-
-    res.json({
-      success: true,
-      data: result.rows
-    });
-  } catch (error) {
-    handleError(res, error);
-  }
-});
-
-// GET single service
-router.get('/services/:id', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req);
-    const { id } = req.params;
-
-    const result = await tursoClient.execute({
-      sql: 'SELECT * FROM services WHERE id = ? AND tenant_id = ?',
-      args: [id, tenantId]
-    });
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Layanan tidak ditemukan'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: result.rows[0]
-    });
-  } catch (error) {
-    handleError(res, error);
-  }
-});
-
-// CREATE service
-router.post('/services', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req);
-    const {
-      service_id,
-      name,
-      price_per_kg,
-      turnaround_days,
-      description
-    } = req.body;
-
-    if (!service_id || !name || !price_per_kg) {
-      return res.status(400).json({
-        success: false,
-        error: 'Data layanan tidak lengkap'
-      });
-    }
-
-    const result = await tursoClient.execute({
-      sql: `INSERT INTO services 
-            (tenant_id, service_id, name, price_per_kg, turnaround_days, 
-             description, active, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-      args: [
-        tenantId,
-        service_id,
-        name,
-        price_per_kg,
-        turnaround_days || 1,
-        description || '',
-        1
-      ]
-    });
-
-    res.status(201).json({
-      success: true,
-      data: {
-        id: Number(result.lastInsertRowid),
-        service_id,
-        name,
-        price_per_kg,
-        turnaround_days: turnaround_days || 1,
-        active: true
-      }
-    });
-  } catch (error) {
-    handleError(res, error);
-  }
-});
-
-// UPDATE service
-router.put('/services/:id', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req);
-    const { id } = req.params;
-    const updates = req.body;
-
-    const checkResult = await tursoClient.execute({
-      sql: 'SELECT * FROM services WHERE id = ? AND tenant_id = ?',
-      args: [id, tenantId]
-    });
-
-    if (checkResult.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Layanan tidak ditemukan'
-      });
-    }
-
-    const allowedFields = [
-      'name', 'price_per_kg', 'turnaround_days', 'description', 'active'
-    ];
-
-    const fields = [];
-    const values = [];
-
-    Object.keys(updates).forEach(key => {
-      if (allowedFields.includes(key)) {
-        fields.push(`${key} = ?`);
-        values.push(updates[key]);
-      }
-    });
-
-    if (fields.length === 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'Tidak ada field yang dapat diperbarui'
-      });
-    }
-
-    fields.push('updated_at = datetime("now")');
-    values.push(id, tenantId);
-
-    await tursoClient.execute({
-      sql: `UPDATE services SET ${fields.join(', ')} WHERE id = ? AND tenant_id = ?`,
-      args: values
-    });
-
-    res.json({
-      success: true,
-      data: { id, ...updates }
-    });
-  } catch (error) {
-    handleError(res, error);
-  }
-});
-
-// DELETE service
-router.delete('/services/:id', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req);
-    const { id } = req.params;
-
-    const result = await tursoClient.execute({
-      sql: 'DELETE FROM services WHERE id = ? AND tenant_id = ?',
-      args: [id, tenantId]
-    });
-
-    if (result.rowsChanged === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Layanan tidak ditemukan'
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Layanan berhasil dihapus'
-    });
-  } catch (error) {
-    handleError(res, error);
-  }
-});
-
-// ============================================================================
-// PAYMENTS ENDPOINTS
-// ============================================================================
-
-// GET all payments
-router.get('/payments', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req);
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const offset = (page - 1) * limit;
-    const status = req.query.status;
-
-    let sql = 'SELECT * FROM payments WHERE tenant_id = ?';
-    let args = [tenantId];
-
-    if (status) {
-      sql += ' AND status = ?';
-      args.push(status);
-    }
-
-    sql += ' ORDER BY id DESC LIMIT ? OFFSET ?';
-    args.push(limit, offset);
-
-    const result = await tursoClient.execute({
-      sql,
-      args
-    });
-
-    let countSql = 'SELECT COUNT(*) as total FROM payments WHERE tenant_id = ?';
-    let countArgs = [tenantId];
-
-    if (status) {
-      countSql += ' AND status = ?';
-      countArgs.push(status);
-    }
-
-    const countResult = await tursoClient.execute({
-      sql: countSql,
-      args: countArgs
-    });
-
-    res.json({
-      success: true,
-      data: result.rows,
-      pagination: {
-        page,
-        limit,
-        total: countResult.rows[0].total,
-        pages: Math.ceil(countResult.rows[0].total / limit)
-      }
-    });
-  } catch (error) {
-    handleError(res, error);
-  }
-});
-
-// GET single payment
-router.get('/payments/:id', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req);
-    const { id } = req.params;
-
-    const result = await tursoClient.execute({
-      sql: 'SELECT * FROM payments WHERE id = ? AND tenant_id = ?',
-      args: [id, tenantId]
-    });
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Pembayaran tidak ditemukan'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: result.rows[0]
-    });
-  } catch (error) {
-    handleError(res, error);
-  }
-});
-
-// CREATE payment
-router.post('/payments', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req);
-    const {
-      payment_id,
-      order_id,
-      amount,
-      payment_method,
-      reference
-    } = req.body;
-
-    if (!payment_id || !order_id || !amount || !payment_method) {
-      return res.status(400).json({
-        success: false,
-        error: 'Data pembayaran tidak lengkap'
-      });
-    }
-
-    const result = await tursoClient.execute({
-      sql: `INSERT INTO payments 
-            (tenant_id, payment_id, order_id, amount, payment_method, 
-             status, paid_date, reference, created_at) 
-            VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?, datetime('now'))`,
-      args: [
-        tenantId,
-        payment_id,
-        order_id,
-        amount,
-        payment_method,
-        'completed',
-        reference || ''
-      ]
-    });
-
-    res.status(201).json({
-      success: true,
-      data: {
-        id: Number(result.lastInsertRowid),
-        payment_id,
-        order_id,
-        amount,
-        payment_method,
-        status: 'completed'
-      }
-    });
-  } catch (error) {
-    handleError(res, error);
-  }
-});
-
-// UPDATE payment status
-router.put('/payments/:id', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req);
-    const { id } = req.params;
-    const { status } = req.body;
-
-    if (!status) {
-      return res.status(400).json({
-        success: false,
-        error: 'Status pembayaran harus disediakan'
-      });
-    }
-
-    const checkResult = await tursoClient.execute({
-      sql: 'SELECT * FROM payments WHERE id = ? AND tenant_id = ?',
-      args: [id, tenantId]
-    });
-
-    if (checkResult.rows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Pembayaran tidak ditemukan'
-      });
-    }
-
-    await tursoClient.execute({
-      sql: 'UPDATE payments SET status = ?, updated_at = datetime("now") WHERE id = ? AND tenant_id = ?',
-      args: [status, id, tenantId]
-    });
-
-    res.json({
-      success: true,
-      data: { id, status }
-    });
-  } catch (error) {
-    handleError(res, error);
-  }
-});
-
-// DELETE payment
-router.delete('/payments/:id', async (req, res) => {
-  try {
-    const tenantId = getTenantId(req);
-    const { id } = req.params;
-
-    const result = await tursoClient.execute({
-      sql: 'DELETE FROM payments WHERE id = ? AND tenant_id = ?',
-      args: [id, tenantId]
-    });
-
-    if (result.rowsChanged === 0) {
-      return res.status(404).json({
-        success: false,
-        error: 'Pembayaran tidak ditemukan'
-      });
-    }
-
-    res.json({
-      success: true,
-      message: 'Pembayaran berhasil dihapus'
-    });
-  } catch (error) {
-    handleError(res, error);
-  }
-});
-
-// ============================================================================
-//
+};
+
+export default {
+    ordersAPI,
+    customersAPI,
+    employeesAPI,
+    branchesAPI,
+    servicesAPI,
+    paymentsAPI,
+    analyticsAPI,
+    invoicesAPI,
+    notificationsAPI,
+    reportsAPI
+};
