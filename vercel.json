@@ -16,16 +16,27 @@
       "dest": "src/app.js"
     },
     {
-      "src": "/login",
-      "dest": "/public/login.html"
+      "src": "/static/(.*)",
+      "dest": "/public/static/$1"
     },
     {
-      "src": "/dashboard",
-      "dest": "/public/dashboard.html"
+      "src": "/(.*\\.(?:css|js|jpg|jpeg|png|gif|ico|svg|webp|woff|woff2|ttf|eot))",
+      "dest": "/public/$1"
     },
     {
       "src": "/(.*)",
-      "dest": "/public/$1"
+      "dest": "/public/index.html"
     }
+  ],
+  "env": [
+    "PORT",
+    "TURSO_DATABASE_URL",
+    "TURSO_AUTH_TOKEN",
+    "JWT_SECRET",
+    "PAYMENT_GATEWAY_KEY",
+    "NODE_ENV"
+  ],
+  "regions": [
+    "sin1"
   ]
 }
