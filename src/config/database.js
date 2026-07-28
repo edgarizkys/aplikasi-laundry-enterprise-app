@@ -13,24 +13,23 @@ async function initializeDatabase() {
             CREATE TABLE IF NOT EXISTS orders (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 tenant_id TEXT DEFAULT 'default',
-                order_number TEXT UNIQUE NOT NULL,
-                customer_id TEXT NOT NULL,
+                order_id TEXT UNIQUE NOT NULL,
                 customer_name TEXT NOT NULL,
                 phone TEXT,
-                items_description TEXT,
-                total_items INTEGER,
+                email TEXT,
+                items TEXT,
                 weight_kg REAL,
                 service_type TEXT,
+                unit_price REAL,
                 total_price REAL,
                 status TEXT DEFAULT 'pending',
                 pickup_date TEXT,
                 delivery_date TEXT,
-                payment_status TEXT DEFAULT 'unpaid',
+                branch_id TEXT,
+                assigned_staff TEXT,
                 notes TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (tenant_id) REFERENCES tenants(id),
-                FOREIGN KEY (customer_id) REFERENCES customers(customer_id)
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         `);
 
@@ -41,35 +40,17 @@ async function initializeDatabase() {
                 tenant_id TEXT DEFAULT 'default',
                 customer_id TEXT UNIQUE NOT NULL,
                 name TEXT NOT NULL,
-                phone TEXT NOT NULL,
+                phone TEXT UNIQUE,
                 email TEXT,
                 address TEXT,
                 city TEXT,
-                loyalty_points INTEGER DEFAULT 0,
+                member_type TEXT DEFAULT 'regular',
+                points INTEGER DEFAULT 0,
                 total_orders INTEGER DEFAULT 0,
-                registration_date TEXT,
+                total_spent REAL DEFAULT 0,
+                join_date TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (tenant_id) REFERENCES tenants(id)
-            )
-        `);
-
-        // Employees table
-        await tursoClient.execute(`
-            CREATE TABLE IF NOT EXISTS employees (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tenant_id TEXT DEFAULT 'default',
-                employee_id TEXT UNIQUE NOT NULL,
-                name TEXT NOT NULL,
-                position TEXT,
-                phone TEXT,
-                email TEXT,
-                hire_date TEXT,
-                salary REAL,
-                status TEXT DEFAULT 'active',
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         `);
 
@@ -79,15 +60,34 @@ async function initializeDatabase() {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 tenant_id TEXT DEFAULT 'default',
                 branch_id TEXT UNIQUE NOT NULL,
-                name TEXT NOT NULL,
-                address TEXT NOT NULL,
-                city TEXT,
+                branch_name TEXT NOT NULL,
+                address TEXT,
                 phone TEXT,
                 manager_name TEXT,
-                operating_hours TEXT,
+                capacity REAL,
+                opening_hours TEXT,
+                status TEXT DEFAULT 'active',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // Staff table
+        await tursoClient.execute(`
+            CREATE TABLE IF NOT EXISTS staff (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant_id TEXT DEFAULT 'default',
+                staff_id TEXT UNIQUE NOT NULL,
+                name TEXT NOT NULL,
+                phone TEXT,
+                role TEXT,
+                branch_id TEXT,
+                salary REAL,
+                join_date TEXT,
+                status TEXT DEFAULT 'active',
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+                FOREIGN KEY (branch_id) REFERENCES branches(branch_id)
             )
         `);
 
@@ -97,14 +97,13 @@ async function initializeDatabase() {
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 tenant_id TEXT DEFAULT 'default',
                 service_id TEXT UNIQUE NOT NULL,
-                name TEXT NOT NULL,
+                service_name TEXT NOT NULL,
                 description TEXT,
                 price_per_kg REAL,
-                turnaround_days INTEGER,
-                status TEXT DEFAULT 'active',
+                turnaround_time INTEGER,
+                is_active BOOLEAN DEFAULT 1,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (tenant_id) REFERENCES tenants(id)
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         `);
 
@@ -115,169 +114,168 @@ async function initializeDatabase() {
                 tenant_id TEXT DEFAULT 'default',
                 payment_id TEXT UNIQUE NOT NULL,
                 order_id TEXT NOT NULL,
-                customer_name TEXT NOT NULL,
                 amount REAL,
                 payment_method TEXT,
+                status TEXT DEFAULT 'pending',
                 payment_date TEXT,
-                status TEXT DEFAULT 'pending',
+                reference_id TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (tenant_id) REFERENCES tenants(id),
-                FOREIGN KEY (order_id) REFERENCES orders(order_number)
-            )
-        `);
-
-        // Loyalty Points table
-        await tursoClient.execute(`
-            CREATE TABLE IF NOT EXISTS loyalty_points (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tenant_id TEXT DEFAULT 'default',
-                customer_id TEXT NOT NULL,
-                points INTEGER,
-                transaction_type TEXT,
-                order_id TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (tenant_id) REFERENCES tenants(id),
-                FOREIGN KEY (customer_id) REFERENCES customers(customer_id),
-                FOREIGN KEY (order_id) REFERENCES orders(order_number)
-            )
-        `);
-
-        // Delivery tracking table
-        await tursoClient.execute(`
-            CREATE TABLE IF NOT EXISTS delivery_tracking (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tenant_id TEXT DEFAULT 'default',
-                order_id TEXT NOT NULL,
-                status TEXT,
-                location TEXT,
-                latitude REAL,
-                longitude REAL,
-                timestamp TEXT,
-                notes TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (tenant_id) REFERENCES tenants(id),
-                FOREIGN KEY (order_id) REFERENCES orders(order_number)
-            )
-        `);
-
-        // Notifications table
-        await tursoClient.execute(`
-            CREATE TABLE IF NOT EXISTS notifications (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tenant_id TEXT DEFAULT 'default',
-                customer_id TEXT,
-                order_id TEXT,
-                notification_type TEXT,
-                message TEXT,
-                phone TEXT,
-                email TEXT,
-                status TEXT DEFAULT 'pending',
-                sent_at DATETIME,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (tenant_id) REFERENCES tenants(id),
-                FOREIGN KEY (customer_id) REFERENCES customers(customer_id),
-                FOREIGN KEY (order_id) REFERENCES orders(order_number)
-            )
-        `);
-
-        // Invoices table
-        await tursoClient.execute(`
-            CREATE TABLE IF NOT EXISTS invoices (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                tenant_id TEXT DEFAULT 'default',
-                invoice_number TEXT UNIQUE NOT NULL,
-                order_id TEXT NOT NULL,
-                customer_name TEXT NOT NULL,
-                subtotal REAL,
-                tax REAL,
-                discount REAL,
-                total REAL,
-                issued_date TEXT,
-                due_date TEXT,
-                status TEXT DEFAULT 'draft',
-                pdf_url TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (tenant_id) REFERENCES tenants(id),
-                FOREIGN KEY (order_id) REFERENCES orders(order_number)
-            )
-        `);
-
-        // Tenants table
-        await tursoClient.execute(`
-            CREATE TABLE IF NOT EXISTS tenants (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                company_name TEXT,
-                email TEXT,
-                phone TEXT,
-                address TEXT,
-                city TEXT,
-                plan TEXT DEFAULT 'basic',
-                status TEXT DEFAULT 'active',
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                FOREIGN KEY (order_id) REFERENCES orders(order_id)
             )
         `);
 
         // Create indexes for better query performance
         await tursoClient.execute(`CREATE INDEX IF NOT EXISTS idx_orders_tenant_id ON orders(tenant_id)`);
-        await tursoClient.execute(`CREATE INDEX IF NOT EXISTS idx_orders_customer_id ON orders(customer_id)`);
         await tursoClient.execute(`CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status)`);
+        await tursoClient.execute(`CREATE INDEX IF NOT EXISTS idx_orders_branch_id ON orders(branch_id)`);
         await tursoClient.execute(`CREATE INDEX IF NOT EXISTS idx_customers_tenant_id ON customers(tenant_id)`);
         await tursoClient.execute(`CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone)`);
-        await tursoClient.execute(`CREATE INDEX IF NOT EXISTS idx_payments_tenant_id ON payments(tenant_id)`);
-        await tursoClient.execute(`CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status)`);
-        await tursoClient.execute(`CREATE INDEX IF NOT EXISTS idx_employees_tenant_id ON employees(tenant_id)`);
         await tursoClient.execute(`CREATE INDEX IF NOT EXISTS idx_branches_tenant_id ON branches(tenant_id)`);
+        await tursoClient.execute(`CREATE INDEX IF NOT EXISTS idx_staff_tenant_id ON staff(tenant_id)`);
+        await tursoClient.execute(`CREATE INDEX IF NOT EXISTS idx_staff_branch_id ON staff(branch_id)`);
         await tursoClient.execute(`CREATE INDEX IF NOT EXISTS idx_services_tenant_id ON services(tenant_id)`);
+        await tursoClient.execute(`CREATE INDEX IF NOT EXISTS idx_payments_tenant_id ON payments(tenant_id)`);
+        await tursoClient.execute(`CREATE INDEX IF NOT EXISTS idx_payments_order_id ON payments(order_id)`);
 
-        console.log('[DB] All tables initialized successfully');
-    } catch (e) {
-        console.log('[DB] Initialization notice:', e.message);
+        console.log('[DB] Database initialized successfully');
+    } catch(e) {
+        console.log('DB Notice:', e.message);
     }
 }
 
-async function executeQuery(sql, params = []) {
+async function query(sql, params = []) {
     try {
         const result = await tursoClient.execute({
             sql,
             args: params
         });
         return result;
-    } catch (error) {
-        console.error('[DB] Query error:', error.message);
+    } catch(error) {
+        console.error('Database query error:', error.message);
         throw error;
     }
 }
 
-async function executeTransaction(queries) {
+async function queryOne(sql, params = []) {
     try {
-        await tursoClient.execute('BEGIN TRANSACTION');
-        for (const { sql, params } of queries) {
-            await executeQuery(sql, params);
-        }
-        await tursoClient.execute('COMMIT');
-    } catch (error) {
-        await tursoClient.execute('ROLLBACK');
-        console.error('[DB] Transaction error:', error.message);
+        const result = await tursoClient.execute({
+            sql,
+            args: params
+        });
+        return result.rows && result.rows.length > 0 ? result.rows[0] : null;
+    } catch(error) {
+        console.error('Database query error:', error.message);
         throw error;
     }
 }
 
-function getHealthStatus() {
-    return {
-        status: 'connected',
-        database: 'turso_sqlite',
-        timestamp: new Date().toISOString()
-    };
+async function queryAll(sql, params = []) {
+    try {
+        const result = await tursoClient.execute({
+            sql,
+            args: params
+        });
+        return result.rows || [];
+    } catch(error) {
+        console.error('Database query error:', error.message);
+        throw error;
+    }
+}
+
+async function insert(table, data, tenantId = 'default') {
+    try {
+        const keys = Object.keys(data);
+        const values = Object.values(data);
+        const placeholders = keys.map(() => '?').join(',');
+        
+        const sql = `INSERT INTO ${table} (tenant_id, ${keys.join(',')}) VALUES ('${tenantId}', ${placeholders})`;
+        
+        const result = await tursoClient.execute({
+            sql,
+            args: values
+        });
+        
+        return result;
+    } catch(error) {
+        console.error('Insert error:', error.message);
+        throw error;
+    }
+}
+
+async function update(table, data, whereClause, params = [], tenantId = 'default') {
+    try {
+        const sets = Object.keys(data).map(key => `${key} = ?`).join(',');
+        const values = Object.values(data);
+        
+        const sql = `UPDATE ${table} SET ${sets}, updated_at = CURRENT_TIMESTAMP WHERE tenant_id = '${tenantId}' AND ${whereClause}`;
+        
+        const result = await tursoClient.execute({
+            sql,
+            args: [...values, ...params]
+        });
+        
+        return result;
+    } catch(error) {
+        console.error('Update error:', error.message);
+        throw error;
+    }
+}
+
+async function deleteRecord(table, whereClause, params = [], tenantId = 'default') {
+    try {
+        const sql = `DELETE FROM ${table} WHERE tenant_id = '${tenantId}' AND ${whereClause}`;
+        
+        const result = await tursoClient.execute({
+            sql,
+            args: params
+        });
+        
+        return result;
+    } catch(error) {
+        console.error('Delete error:', error.message);
+        throw error;
+    }
+}
+
+async function getPaginated(table, page = 1, limit = 10, whereClause = '', params = [], tenantId = 'default') {
+    try {
+        const offset = (page - 1) * limit;
+        const where = whereClause ? `WHERE tenant_id = '${tenantId}' AND ${whereClause}` : `WHERE tenant_id = '${tenantId}'`;
+        
+        const countResult = await tursoClient.execute({
+            sql: `SELECT COUNT(*) as total FROM ${table} ${where}`,
+            args: params
+        });
+        
+        const total = countResult.rows[0].total;
+        
+        const dataResult = await tursoClient.execute({
+            sql: `SELECT * FROM ${table} ${where} LIMIT ? OFFSET ?`,
+            args: [...params, limit, offset]
+        });
+        
+        return {
+            data: dataResult.rows || [],
+            total,
+            page,
+            limit,
+            pages: Math.ceil(total / limit)
+        };
+    } catch(error) {
+        console.error('Pagination error:', error.message);
+        throw error;
+    }
 }
 
 module.exports = {
     tursoClient,
     initializeDatabase,
-    executeQuery,
-    executeTransaction,
-    getHealthStatus
+    query,
+    queryOne,
+    queryAll,
+    insert,
+    update,
+    deleteRecord,
+    getPaginated
 };
