@@ -1,888 +1,1083 @@
-// api/api.js - Laundry Enterprise API Client
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api';
+// api.js - Laundry Enterprise API Routes and Controllers
+const express = require('express');
+const router = express.Router();
+const { tursoClient } = require('../config/database');
 
-const getHeaders = (tenantId = 'default_tenant') => ({
-  'Content-Type': 'application/json',
-  'x-tenant-id': tenantId,
+// ============================================================================
+// MIDDLEWARE
+// ============================================================================
+
+const getTenantId = (req) => req.headers['x-tenant-id'] || 'default_tenant';
+
+const handleError = (res, error, statusCode = 500) => {
+  console.error('API Error:', error);
+  res.status(statusCode).json({
+    success: false,
+    error: error.message || 'Terjadi kesalahan pada server'
+  });
+};
+
+// ============================================================================
+// ORDERS ENDPOINTS
+// ============================================================================
+
+// GET all orders with pagination
+router.get('/orders', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+    const status = req.query.status;
+
+    let sql = 'SELECT * FROM orders WHERE tenant_id = ?';
+    let args = [tenantId];
+
+    if (status) {
+      sql += ' AND status = ?';
+      args.push(status);
+    }
+
+    sql += ' ORDER BY id DESC LIMIT ? OFFSET ?';
+    args.push(limit, offset);
+
+    const result = await tursoClient.execute({
+      sql,
+      args
+    });
+
+    let countSql = 'SELECT COUNT(*) as total FROM orders WHERE tenant_id = ?';
+    let countArgs = [tenantId];
+
+    if (status) {
+      countSql += ' AND status = ?';
+      countArgs.push(status);
+    }
+
+    const countResult = await tursoClient.execute({
+      sql: countSql,
+      args: countArgs
+    });
+
+    res.json({
+      success: true,
+      data: result.rows,
+      pagination: {
+        page,
+        limit,
+        total: countResult.rows[0].total,
+        pages: Math.ceil(countResult.rows[0].total / limit)
+      }
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+// GET single order by ID
+router.get('/orders/:id', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+
+    const result = await tursoClient.execute({
+      sql: 'SELECT * FROM orders WHERE id = ? AND tenant_id = ?',
+      args: [id, tenantId]
+    });
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Pesanan tidak ditemukan'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: result.rows[0]
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+// CREATE new order
+router.post('/orders', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const {
+      order_number,
+      customer_id,
+      customer_name,
+      phone,
+      items_count,
+      weight_kg,
+      service_type,
+      total_price,
+      pickup_date,
+      delivery_date,
+      assigned_staff,
+      notes
+    } = req.body;
+
+    if (!order_number || !customer_name || !phone || !weight_kg || !total_price) {
+      return res.status(400).json({
+        success: false,
+        error: 'Data pesanan tidak lengkap'
+      });
+    }
+
+    const result = await tursoClient.execute({
+      sql: `INSERT INTO orders 
+            (tenant_id, order_number, customer_id, customer_name, phone, items_count, 
+             weight_kg, service_type, total_price, status, pickup_date, delivery_date, 
+             assigned_staff, notes, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      args: [
+        tenantId,
+        order_number,
+        customer_id || null,
+        customer_name,
+        phone,
+        items_count || 0,
+        weight_kg,
+        service_type || 'Regular',
+        total_price,
+        'pending',
+        pickup_date,
+        delivery_date || null,
+        assigned_staff || null,
+        notes || ''
+      ]
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: Number(result.lastInsertRowid),
+        order_number,
+        customer_name,
+        phone,
+        weight_kg,
+        total_price,
+        status: 'pending'
+      }
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+// UPDATE order
+router.put('/orders/:id', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    const updates = req.body;
+
+    const checkResult = await tursoClient.execute({
+      sql: 'SELECT * FROM orders WHERE id = ? AND tenant_id = ?',
+      args: [id, tenantId]
+    });
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Pesanan tidak ditemukan'
+      });
+    }
+
+    const allowedFields = [
+      'customer_name', 'phone', 'items_count', 'weight_kg', 'service_type',
+      'total_price', 'status', 'pickup_date', 'delivery_date', 'assigned_staff', 'notes'
+    ];
+
+    const fields = [];
+    const values = [];
+
+    Object.keys(updates).forEach(key => {
+      if (allowedFields.includes(key)) {
+        fields.push(`${key} = ?`);
+        values.push(updates[key]);
+      }
+    });
+
+    if (fields.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Tidak ada field yang dapat diperbarui'
+      });
+    }
+
+    fields.push('updated_at = datetime("now")');
+    values.push(id, tenantId);
+
+    await tursoClient.execute({
+      sql: `UPDATE orders SET ${fields.join(', ')} WHERE id = ? AND tenant_id = ?`,
+      args: values
+    });
+
+    res.json({
+      success: true,
+      data: { id, ...updates }
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+// DELETE order
+router.delete('/orders/:id', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+
+    const result = await tursoClient.execute({
+      sql: 'DELETE FROM orders WHERE id = ? AND tenant_id = ?',
+      args: [id, tenantId]
+    });
+
+    if (result.rowsChanged === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Pesanan tidak ditemukan'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Pesanan berhasil dihapus'
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
 });
 
 // ============================================================================
-// ORDERS API
+// CUSTOMERS ENDPOINTS
 // ============================================================================
 
-export const ordersAPI = {
-  // Get all orders with pagination
-  getAll: async (page = 1, limit = 20, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/orders?page=${page}&limit=${limit}`,
-        {
-          method: 'GET',
-          headers: getHeaders(tenantId),
-        }
-      );
-      if (!response.ok) throw new Error('Failed to fetch orders');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching orders:', error);
-      throw error;
-    }
-  },
+// GET all customers
+router.get('/customers', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
 
-  // Get single order by ID
-  getById: async (id, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/orders/${id}`, {
-        method: 'GET',
-        headers: getHeaders(tenantId),
+    const result = await tursoClient.execute({
+      sql: 'SELECT * FROM customers WHERE tenant_id = ? ORDER BY id DESC LIMIT ? OFFSET ?',
+      args: [tenantId, limit, offset]
+    });
+
+    const countResult = await tursoClient.execute({
+      sql: 'SELECT COUNT(*) as total FROM customers WHERE tenant_id = ?',
+      args: [tenantId]
+    });
+
+    res.json({
+      success: true,
+      data: result.rows,
+      pagination: {
+        page,
+        limit,
+        total: countResult.rows[0].total,
+        pages: Math.ceil(countResult.rows[0].total / limit)
+      }
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+// GET single customer
+router.get('/customers/:id', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+
+    const result = await tursoClient.execute({
+      sql: 'SELECT * FROM customers WHERE id = ? AND tenant_id = ?',
+      args: [id, tenantId]
+    });
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Pelanggan tidak ditemukan'
       });
-      if (!response.ok) throw new Error('Failed to fetch order');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching order:', error);
-      throw error;
     }
-  },
 
-  // Create new order
-  create: async (data, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/orders`, {
-        method: 'POST',
-        headers: getHeaders(tenantId),
-        body: JSON.stringify(data),
+    res.json({
+      success: true,
+      data: result.rows[0]
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+// CREATE customer
+router.post('/customers', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const {
+      customer_id,
+      name,
+      phone,
+      email,
+      address,
+      member_tier,
+      joined_date
+    } = req.body;
+
+    if (!customer_id || !name || !phone) {
+      return res.status(400).json({
+        success: false,
+        error: 'Data pelanggan tidak lengkap'
       });
-      if (!response.ok) throw new Error('Failed to create order');
-      return await response.json();
-    } catch (error) {
-      console.error('Error creating order:', error);
-      throw error;
     }
-  },
 
-  // Update order
-  update: async (id, data, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/orders/${id}`, {
-        method: 'PUT',
-        headers: getHeaders(tenantId),
-        body: JSON.stringify(data),
+    const result = await tursoClient.execute({
+      sql: `INSERT INTO customers 
+            (tenant_id, customer_id, name, phone, email, address, loyalty_points, 
+             total_spent, member_tier, joined_date, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      args: [
+        tenantId,
+        customer_id,
+        name,
+        phone,
+        email || null,
+        address || null,
+        0,
+        0,
+        member_tier || 'Bronze',
+        joined_date || new Date().toISOString().split('T')[0]
+      ]
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: Number(result.lastInsertRowid),
+        customer_id,
+        name,
+        phone,
+        loyalty_points: 0,
+        total_spent: 0,
+        member_tier: member_tier || 'Bronze'
+      }
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+// UPDATE customer
+router.put('/customers/:id', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    const updates = req.body;
+
+    const checkResult = await tursoClient.execute({
+      sql: 'SELECT * FROM customers WHERE id = ? AND tenant_id = ?',
+      args: [id, tenantId]
+    });
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Pelanggan tidak ditemukan'
       });
-      if (!response.ok) throw new Error('Failed to update order');
-      return await response.json();
-    } catch (error) {
-      console.error('Error updating order:', error);
-      throw error;
     }
-  },
 
-  // Delete order
-  delete: async (id, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/orders/${id}`, {
-        method: 'DELETE',
-        headers: getHeaders(tenantId),
+    const allowedFields = [
+      'name', 'phone', 'email', 'address', 'loyalty_points', 
+      'total_spent', 'member_tier'
+    ];
+
+    const fields = [];
+    const values = [];
+
+    Object.keys(updates).forEach(key => {
+      if (allowedFields.includes(key)) {
+        fields.push(`${key} = ?`);
+        values.push(updates[key]);
+      }
+    });
+
+    if (fields.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Tidak ada field yang dapat diperbarui'
       });
-      if (!response.ok) throw new Error('Failed to delete order');
-      return await response.json();
-    } catch (error) {
-      console.error('Error deleting order:', error);
-      throw error;
     }
-  },
 
-  // Get orders by status
-  getByStatus: async (status, page = 1, limit = 20, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/orders/status/${status}?page=${page}&limit=${limit}`,
-        {
-          method: 'GET',
-          headers: getHeaders(tenantId),
-        }
-      );
-      if (!response.ok) throw new Error('Failed to fetch orders by status');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching orders by status:', error);
-      throw error;
-    }
-  },
+    fields.push('updated_at = datetime("now")');
+    values.push(id, tenantId);
 
-  // Search orders
-  search: async (query, page = 1, limit = 20, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/orders/search?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}`,
-        {
-          method: 'GET',
-          headers: getHeaders(tenantId),
-        }
-      );
-      if (!response.ok) throw new Error('Failed to search orders');
-      return await response.json();
-    } catch (error) {
-      console.error('Error searching orders:', error);
-      throw error;
+    await tursoClient.execute({
+      sql: `UPDATE customers SET ${fields.join(', ')} WHERE id = ? AND tenant_id = ?`,
+      args: values
+    });
+
+    res.json({
+      success: true,
+      data: { id, ...updates }
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+// DELETE customer
+router.delete('/customers/:id', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+
+    const result = await tursoClient.execute({
+      sql: 'DELETE FROM customers WHERE id = ? AND tenant_id = ?',
+      args: [id, tenantId]
+    });
+
+    if (result.rowsChanged === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Pelanggan tidak ditemukan'
+      });
     }
-  },
-};
+
+    res.json({
+      success: true,
+      message: 'Pelanggan berhasil dihapus'
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
 
 // ============================================================================
-// CUSTOMERS API
+// STAFF ENDPOINTS
 // ============================================================================
 
-export const customersAPI = {
-  // Get all customers with pagination
-  getAll: async (page = 1, limit = 20, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/customers?page=${page}&limit=${limit}`,
-        {
-          method: 'GET',
-          headers: getHeaders(tenantId),
-        }
-      );
-      if (!response.ok) throw new Error('Failed to fetch customers');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching customers:', error);
-      throw error;
-    }
-  },
+// GET all staff
+router.get('/staff', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+    const status = req.query.status;
 
-  // Get single customer by ID
-  getById: async (id, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/customers/${id}`, {
-        method: 'GET',
-        headers: getHeaders(tenantId),
+    let sql = 'SELECT * FROM staff WHERE tenant_id = ?';
+    let args = [tenantId];
+
+    if (status) {
+      sql += ' AND status = ?';
+      args.push(status);
+    }
+
+    sql += ' ORDER BY id DESC LIMIT ? OFFSET ?';
+    args.push(limit, offset);
+
+    const result = await tursoClient.execute({
+      sql,
+      args
+    });
+
+    let countSql = 'SELECT COUNT(*) as total FROM staff WHERE tenant_id = ?';
+    let countArgs = [tenantId];
+
+    if (status) {
+      countSql += ' AND status = ?';
+      countArgs.push(status);
+    }
+
+    const countResult = await tursoClient.execute({
+      sql: countSql,
+      args: countArgs
+    });
+
+    res.json({
+      success: true,
+      data: result.rows,
+      pagination: {
+        page,
+        limit,
+        total: countResult.rows[0].total,
+        pages: Math.ceil(countResult.rows[0].total / limit)
+      }
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+// GET single staff
+router.get('/staff/:id', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+
+    const result = await tursoClient.execute({
+      sql: 'SELECT * FROM staff WHERE id = ? AND tenant_id = ?',
+      args: [id, tenantId]
+    });
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Staff tidak ditemukan'
       });
-      if (!response.ok) throw new Error('Failed to fetch customer');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching customer:', error);
-      throw error;
     }
-  },
 
-  // Create new customer
-  create: async (data, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/customers`, {
-        method: 'POST',
-        headers: getHeaders(tenantId),
-        body: JSON.stringify(data),
+    res.json({
+      success: true,
+      data: result.rows[0]
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+// CREATE staff
+router.post('/staff', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const {
+      staff_id,
+      name,
+      position,
+      phone,
+      email,
+      salary,
+      hire_date
+    } = req.body;
+
+    if (!staff_id || !name || !position) {
+      return res.status(400).json({
+        success: false,
+        error: 'Data staff tidak lengkap'
       });
-      if (!response.ok) throw new Error('Failed to create customer');
-      return await response.json();
-    } catch (error) {
-      console.error('Error creating customer:', error);
-      throw error;
     }
-  },
 
-  // Update customer
-  update: async (id, data, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/customers/${id}`, {
-        method: 'PUT',
-        headers: getHeaders(tenantId),
-        body: JSON.stringify(data),
+    const result = await tursoClient.execute({
+      sql: `INSERT INTO staff 
+            (tenant_id, staff_id, name, position, phone, email, salary, 
+             hire_date, status, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      args: [
+        tenantId,
+        staff_id,
+        name,
+        position,
+        phone || null,
+        email || null,
+        salary || 0,
+        hire_date || new Date().toISOString().split('T')[0],
+        'active'
+      ]
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: Number(result.lastInsertRowid),
+        staff_id,
+        name,
+        position,
+        status: 'active'
+      }
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+// UPDATE staff
+router.put('/staff/:id', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    const updates = req.body;
+
+    const checkResult = await tursoClient.execute({
+      sql: 'SELECT * FROM staff WHERE id = ? AND tenant_id = ?',
+      args: [id, tenantId]
+    });
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Staff tidak ditemukan'
       });
-      if (!response.ok) throw new Error('Failed to update customer');
-      return await response.json();
-    } catch (error) {
-      console.error('Error updating customer:', error);
-      throw error;
     }
-  },
 
-  // Delete customer
-  delete: async (id, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/customers/${id}`, {
-        method: 'DELETE',
-        headers: getHeaders(tenantId),
+    const allowedFields = [
+      'name', 'position', 'phone', 'email', 'salary', 'status'
+    ];
+
+    const fields = [];
+    const values = [];
+
+    Object.keys(updates).forEach(key => {
+      if (allowedFields.includes(key)) {
+        fields.push(`${key} = ?`);
+        values.push(updates[key]);
+      }
+    });
+
+    if (fields.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Tidak ada field yang dapat diperbarui'
       });
-      if (!response.ok) throw new Error('Failed to delete customer');
-      return await response.json();
-    } catch (error) {
-      console.error('Error deleting customer:', error);
-      throw error;
     }
-  },
 
-  // Get customer loyalty info
-  getLoyalty: async (id, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/customers/${id}/loyalty`, {
-        method: 'GET',
-        headers: getHeaders(tenantId),
+    fields.push('updated_at = datetime("now")');
+    values.push(id, tenantId);
+
+    await tursoClient.execute({
+      sql: `UPDATE staff SET ${fields.join(', ')} WHERE id = ? AND tenant_id = ?`,
+      args: values
+    });
+
+    res.json({
+      success: true,
+      data: { id, ...updates }
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+// DELETE staff
+router.delete('/staff/:id', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+
+    const result = await tursoClient.execute({
+      sql: 'DELETE FROM staff WHERE id = ? AND tenant_id = ?',
+      args: [id, tenantId]
+    });
+
+    if (result.rowsChanged === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Staff tidak ditemukan'
       });
-      if (!response.ok) throw new Error('Failed to fetch loyalty info');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching loyalty info:', error);
-      throw error;
     }
-  },
 
-  // Update loyalty points
-  updateLoyalty: async (id, points, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/customers/${id}/loyalty`, {
-        method: 'PUT',
-        headers: getHeaders(tenantId),
-        body: JSON.stringify({ points }),
-      });
-      if (!response.ok) throw new Error('Failed to update loyalty points');
-      return await response.json();
-    } catch (error) {
-      console.error('Error updating loyalty points:', error);
-      throw error;
-    }
-  },
-
-  // Search customers
-  search: async (query, page = 1, limit = 20, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/customers/search?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}`,
-        {
-          method: 'GET',
-          headers: getHeaders(tenantId),
-        }
-      );
-      if (!response.ok) throw new Error('Failed to search customers');
-      return await response.json();
-    } catch (error) {
-      console.error('Error searching customers:', error);
-      throw error;
-    }
-  },
-};
+    res.json({
+      success: true,
+      message: 'Staff berhasil dihapus'
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
 
 // ============================================================================
-// STAFF API
+// SERVICES ENDPOINTS
 // ============================================================================
 
-export const staffAPI = {
-  // Get all staff with pagination
-  getAll: async (page = 1, limit = 20, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/staff?page=${page}&limit=${limit}`,
-        {
-          method: 'GET',
-          headers: getHeaders(tenantId),
-        }
-      );
-      if (!response.ok) throw new Error('Failed to fetch staff');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching staff:', error);
-      throw error;
-    }
-  },
+// GET all services
+router.get('/services', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const active = req.query.active;
 
-  // Get single staff by ID
-  getById: async (id, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/staff/${id}`, {
-        method: 'GET',
-        headers: getHeaders(tenantId),
+    let sql = 'SELECT * FROM services WHERE tenant_id = ?';
+    let args = [tenantId];
+
+    if (active !== undefined) {
+      sql += ' AND active = ?';
+      args.push(active === 'true' ? 1 : 0);
+    }
+
+    sql += ' ORDER BY id DESC';
+
+    const result = await tursoClient.execute({
+      sql,
+      args
+    });
+
+    res.json({
+      success: true,
+      data: result.rows
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+// GET single service
+router.get('/services/:id', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+
+    const result = await tursoClient.execute({
+      sql: 'SELECT * FROM services WHERE id = ? AND tenant_id = ?',
+      args: [id, tenantId]
+    });
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Layanan tidak ditemukan'
       });
-      if (!response.ok) throw new Error('Failed to fetch staff');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching staff:', error);
-      throw error;
     }
-  },
 
-  // Create new staff
-  create: async (data, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/staff`, {
-        method: 'POST',
-        headers: getHeaders(tenantId),
-        body: JSON.stringify(data),
+    res.json({
+      success: true,
+      data: result.rows[0]
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+// CREATE service
+router.post('/services', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const {
+      service_id,
+      name,
+      price_per_kg,
+      turnaround_days,
+      description
+    } = req.body;
+
+    if (!service_id || !name || !price_per_kg) {
+      return res.status(400).json({
+        success: false,
+        error: 'Data layanan tidak lengkap'
       });
-      if (!response.ok) throw new Error('Failed to create staff');
-      return await response.json();
-    } catch (error) {
-      console.error('Error creating staff:', error);
-      throw error;
     }
-  },
 
-  // Update staff
-  update: async (id, data, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/staff/${id}`, {
-        method: 'PUT',
-        headers: getHeaders(tenantId),
-        body: JSON.stringify(data),
+    const result = await tursoClient.execute({
+      sql: `INSERT INTO services 
+            (tenant_id, service_id, name, price_per_kg, turnaround_days, 
+             description, active, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      args: [
+        tenantId,
+        service_id,
+        name,
+        price_per_kg,
+        turnaround_days || 1,
+        description || '',
+        1
+      ]
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: Number(result.lastInsertRowid),
+        service_id,
+        name,
+        price_per_kg,
+        turnaround_days: turnaround_days || 1,
+        active: true
+      }
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+// UPDATE service
+router.put('/services/:id', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    const updates = req.body;
+
+    const checkResult = await tursoClient.execute({
+      sql: 'SELECT * FROM services WHERE id = ? AND tenant_id = ?',
+      args: [id, tenantId]
+    });
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Layanan tidak ditemukan'
       });
-      if (!response.ok) throw new Error('Failed to update staff');
-      return await response.json();
-    } catch (error) {
-      console.error('Error updating staff:', error);
-      throw error;
     }
-  },
 
-  // Delete staff
-  delete: async (id, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/staff/${id}`, {
-        method: 'DELETE',
-        headers: getHeaders(tenantId),
+    const allowedFields = [
+      'name', 'price_per_kg', 'turnaround_days', 'description', 'active'
+    ];
+
+    const fields = [];
+    const values = [];
+
+    Object.keys(updates).forEach(key => {
+      if (allowedFields.includes(key)) {
+        fields.push(`${key} = ?`);
+        values.push(updates[key]);
+      }
+    });
+
+    if (fields.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Tidak ada field yang dapat diperbarui'
       });
-      if (!response.ok) throw new Error('Failed to delete staff');
-      return await response.json();
-    } catch (error) {
-      console.error('Error deleting staff:', error);
-      throw error;
     }
-  },
 
-  // Get staff by role
-  getByRole: async (role, page = 1, limit = 20, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/staff/role/${role}?page=${page}&limit=${limit}`,
-        {
-          method: 'GET',
-          headers: getHeaders(tenantId),
-        }
-      );
-      if (!response.ok) throw new Error('Failed to fetch staff by role');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching staff by role:', error);
-      throw error;
-    }
-  },
+    fields.push('updated_at = datetime("now")');
+    values.push(id, tenantId);
 
-  // Get staff performance metrics
-  getPerformance: async (id, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/staff/${id}/performance`, {
-        method: 'GET',
-        headers: getHeaders(tenantId),
+    await tursoClient.execute({
+      sql: `UPDATE services SET ${fields.join(', ')} WHERE id = ? AND tenant_id = ?`,
+      args: values
+    });
+
+    res.json({
+      success: true,
+      data: { id, ...updates }
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+// DELETE service
+router.delete('/services/:id', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+
+    const result = await tursoClient.execute({
+      sql: 'DELETE FROM services WHERE id = ? AND tenant_id = ?',
+      args: [id, tenantId]
+    });
+
+    if (result.rowsChanged === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Layanan tidak ditemukan'
       });
-      if (!response.ok) throw new Error('Failed to fetch performance metrics');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching performance metrics:', error);
-      throw error;
     }
-  },
-};
+
+    res.json({
+      success: true,
+      message: 'Layanan berhasil dihapus'
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
 
 // ============================================================================
-// MACHINES API
+// PAYMENTS ENDPOINTS
 // ============================================================================
 
-export const machinesAPI = {
-  // Get all machines with pagination
-  getAll: async (page = 1, limit = 20, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/machines?page=${page}&limit=${limit}`,
-        {
-          method: 'GET',
-          headers: getHeaders(tenantId),
-        }
-      );
-      if (!response.ok) throw new Error('Failed to fetch machines');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching machines:', error);
-      throw error;
-    }
-  },
+// GET all payments
+router.get('/payments', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = (page - 1) * limit;
+    const status = req.query.status;
 
-  // Get single machine by ID
-  getById: async (id, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/machines/${id}`, {
-        method: 'GET',
-        headers: getHeaders(tenantId),
+    let sql = 'SELECT * FROM payments WHERE tenant_id = ?';
+    let args = [tenantId];
+
+    if (status) {
+      sql += ' AND status = ?';
+      args.push(status);
+    }
+
+    sql += ' ORDER BY id DESC LIMIT ? OFFSET ?';
+    args.push(limit, offset);
+
+    const result = await tursoClient.execute({
+      sql,
+      args
+    });
+
+    let countSql = 'SELECT COUNT(*) as total FROM payments WHERE tenant_id = ?';
+    let countArgs = [tenantId];
+
+    if (status) {
+      countSql += ' AND status = ?';
+      countArgs.push(status);
+    }
+
+    const countResult = await tursoClient.execute({
+      sql: countSql,
+      args: countArgs
+    });
+
+    res.json({
+      success: true,
+      data: result.rows,
+      pagination: {
+        page,
+        limit,
+        total: countResult.rows[0].total,
+        pages: Math.ceil(countResult.rows[0].total / limit)
+      }
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+// GET single payment
+router.get('/payments/:id', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+
+    const result = await tursoClient.execute({
+      sql: 'SELECT * FROM payments WHERE id = ? AND tenant_id = ?',
+      args: [id, tenantId]
+    });
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Pembayaran tidak ditemukan'
       });
-      if (!response.ok) throw new Error('Failed to fetch machine');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching machine:', error);
-      throw error;
     }
-  },
 
-  // Create new machine
-  create: async (data, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/machines`, {
-        method: 'POST',
-        headers: getHeaders(tenantId),
-        body: JSON.stringify(data),
+    res.json({
+      success: true,
+      data: result.rows[0]
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+// CREATE payment
+router.post('/payments', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const {
+      payment_id,
+      order_id,
+      amount,
+      payment_method,
+      reference
+    } = req.body;
+
+    if (!payment_id || !order_id || !amount || !payment_method) {
+      return res.status(400).json({
+        success: false,
+        error: 'Data pembayaran tidak lengkap'
       });
-      if (!response.ok) throw new Error('Failed to create machine');
-      return await response.json();
-    } catch (error) {
-      console.error('Error creating machine:', error);
-      throw error;
     }
-  },
 
-  // Update machine
-  update: async (id, data, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/machines/${id}`, {
-        method: 'PUT',
-        headers: getHeaders(tenantId),
-        body: JSON.stringify(data),
+    const result = await tursoClient.execute({
+      sql: `INSERT INTO payments 
+            (tenant_id, payment_id, order_id, amount, payment_method, 
+             status, paid_date, reference, created_at) 
+            VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?, datetime('now'))`,
+      args: [
+        tenantId,
+        payment_id,
+        order_id,
+        amount,
+        payment_method,
+        'completed',
+        reference || ''
+      ]
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        id: Number(result.lastInsertRowid),
+        payment_id,
+        order_id,
+        amount,
+        payment_method,
+        status: 'completed'
+      }
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+// UPDATE payment status
+router.put('/payments/:id', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        error: 'Status pembayaran harus disediakan'
       });
-      if (!response.ok) throw new Error('Failed to update machine');
-      return await response.json();
-    } catch (error) {
-      console.error('Error updating machine:', error);
-      throw error;
     }
-  },
 
-  // Delete machine
-  delete: async (id, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/machines/${id}`, {
-        method: 'DELETE',
-        headers: getHeaders(tenantId),
+    const checkResult = await tursoClient.execute({
+      sql: 'SELECT * FROM payments WHERE id = ? AND tenant_id = ?',
+      args: [id, tenantId]
+    });
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Pembayaran tidak ditemukan'
       });
-      if (!response.ok) throw new Error('Failed to delete machine');
-      return await response.json();
-    } catch (error) {
-      console.error('Error deleting machine:', error);
-      throw error;
     }
-  },
 
-  // Update maintenance schedule
-  updateMaintenance: async (id, data, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/machines/${id}/maintenance`, {
-        method: 'PUT',
-        headers: getHeaders(tenantId),
-        body: JSON.stringify(data),
+    await tursoClient.execute({
+      sql: 'UPDATE payments SET status = ?, updated_at = datetime("now") WHERE id = ? AND tenant_id = ?',
+      args: [status, id, tenantId]
+    });
+
+    res.json({
+      success: true,
+      data: { id, status }
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
+
+// DELETE payment
+router.delete('/payments/:id', async (req, res) => {
+  try {
+    const tenantId = getTenantId(req);
+    const { id } = req.params;
+
+    const result = await tursoClient.execute({
+      sql: 'DELETE FROM payments WHERE id = ? AND tenant_id = ?',
+      args: [id, tenantId]
+    });
+
+    if (result.rowsChanged === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Pembayaran tidak ditemukan'
       });
-      if (!response.ok) throw new Error('Failed to update maintenance');
-      return await response.json();
-    } catch (error) {
-      console.error('Error updating maintenance:', error);
-      throw error;
     }
-  },
 
-  // Get machines requiring maintenance
-  getMaintenanceDue: async (page = 1, limit = 20, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/machines/maintenance/due?page=${page}&limit=${limit}`,
-        {
-          method: 'GET',
-          headers: getHeaders(tenantId),
-        }
-      );
-      if (!response.ok) throw new Error('Failed to fetch maintenance due');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching maintenance due:', error);
-      throw error;
-    }
-  },
-};
+    res.json({
+      success: true,
+      message: 'Pembayaran berhasil dihapus'
+    });
+  } catch (error) {
+    handleError(res, error);
+  }
+});
 
 // ============================================================================
-// PAYMENTS API
-// ============================================================================
-
-export const paymentsAPI = {
-  // Get all payments with pagination
-  getAll: async (page = 1, limit = 20, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/payments?page=${page}&limit=${limit}`,
-        {
-          method: 'GET',
-          headers: getHeaders(tenantId),
-        }
-      );
-      if (!response.ok) throw new Error('Failed to fetch payments');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching payments:', error);
-      throw error;
-    }
-  },
-
-  // Get single payment by ID
-  getById: async (id, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/payments/${id}`, {
-        method: 'GET',
-        headers: getHeaders(tenantId),
-      });
-      if (!response.ok) throw new Error('Failed to fetch payment');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching payment:', error);
-      throw error;
-    }
-  },
-
-  // Create new payment
-  create: async (data, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/payments`, {
-        method: 'POST',
-        headers: getHeaders(tenantId),
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) throw new Error('Failed to create payment');
-      return await response.json();
-    } catch (error) {
-      console.error('Error creating payment:', error);
-      throw error;
-    }
-  },
-
-  // Update payment
-  update: async (id, data, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/payments/${id}`, {
-        method: 'PUT',
-        headers: getHeaders(tenantId),
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) throw new Error('Failed to update payment');
-      return await response.json();
-    } catch (error) {
-      console.error('Error updating payment:', error);
-      throw error;
-    }
-  },
-
-  // Delete payment
-  delete: async (id, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/payments/${id}`, {
-        method: 'DELETE',
-        headers: getHeaders(tenantId),
-      });
-      if (!response.ok) throw new Error('Failed to delete payment');
-      return await response.json();
-    } catch (error) {
-      console.error('Error deleting payment:', error);
-      throw error;
-    }
-  },
-
-  // Get payments by status
-  getByStatus: async (status, page = 1, limit = 20, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/payments/status/${status}?page=${page}&limit=${limit}`,
-        {
-          method: 'GET',
-          headers: getHeaders(tenantId),
-        }
-      );
-      if (!response.ok) throw new Error('Failed to fetch payments by status');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching payments by status:', error);
-      throw error;
-    }
-  },
-
-  // Get payments by method
-  getByMethod: async (method, page = 1, limit = 20, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/payments/method/${method}?page=${page}&limit=${limit}`,
-        {
-          method: 'GET',
-          headers: getHeaders(tenantId),
-        }
-      );
-      if (!response.ok) throw new Error('Failed to fetch payments by method');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching payments by method:', error);
-      throw error;
-    }
-  },
-
-  // Verify payment
-  verify: async (paymentId, data, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/payments/${paymentId}/verify`, {
-        method: 'POST',
-        headers: getHeaders(tenantId),
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) throw new Error('Failed to verify payment');
-      return await response.json();
-    } catch (error) {
-      console.error('Error verifying payment:', error);
-      throw error;
-    }
-  },
-};
-
-// ============================================================================
-// BRANCHES API
-// ============================================================================
-
-export const branchesAPI = {
-  // Get all branches with pagination
-  getAll: async (page = 1, limit = 20, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/branches?page=${page}&limit=${limit}`,
-        {
-          method: 'GET',
-          headers: getHeaders(tenantId),
-        }
-      );
-      if (!response.ok) throw new Error('Failed to fetch branches');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching branches:', error);
-      throw error;
-    }
-  },
-
-  // Get single branch by ID
-  getById: async (id, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/branches/${id}`, {
-        method: 'GET',
-        headers: getHeaders(tenantId),
-      });
-      if (!response.ok) throw new Error('Failed to fetch branch');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching branch:', error);
-      throw error;
-    }
-  },
-
-  // Create new branch
-  create: async (data, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/branches`, {
-        method: 'POST',
-        headers: getHeaders(tenantId),
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) throw new Error('Failed to create branch');
-      return await response.json();
-    } catch (error) {
-      console.error('Error creating branch:', error);
-      throw error;
-    }
-  },
-
-  // Update branch
-  update: async (id, data, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/branches/${id}`, {
-        method: 'PUT',
-        headers: getHeaders(tenantId),
-        body: JSON.stringify(data),
-      });
-      if (!response.ok) throw new Error('Failed to update branch');
-      return await response.json();
-    } catch (error) {
-      console.error('Error updating branch:', error);
-      throw error;
-    }
-  },
-
-  // Delete branch
-  delete: async (id, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/branches/${id}`, {
-        method: 'DELETE',
-        headers: getHeaders(tenantId),
-      });
-      if (!response.ok) throw new Error('Failed to delete branch');
-      return await response.json();
-    } catch (error) {
-      console.error('Error deleting branch:', error);
-      throw error;
-    }
-  },
-
-  // Get branch performance metrics
-  getMetrics: async (id, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/branches/${id}/metrics`, {
-        method: 'GET',
-        headers: getHeaders(tenantId),
-      });
-      if (!response.ok) throw new Error('Failed to fetch branch metrics');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching branch metrics:', error);
-      throw error;
-    }
-  },
-};
-
-// ============================================================================
-// ANALYTICS & DASHBOARD API
-// ============================================================================
-
-export const analyticsAPI = {
-  // Get dashboard overview
-  getDashboardOverview: async (dateFrom, dateTo, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/analytics/dashboard?from=${dateFrom}&to=${dateTo}`,
-        {
-          method: 'GET',
-          headers: getHeaders(tenantId),
-        }
-      );
-      if (!response.ok) throw new Error('Failed to fetch dashboard overview');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching dashboard overview:', error);
-      throw error;
-    }
-  },
-
-  // Get revenue report
-  getRevenueReport: async (dateFrom, dateTo, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/analytics/revenue?from=${dateFrom}&to=${dateTo}`,
-        {
-          method: 'GET',
-          headers: getHeaders(tenantId),
-        }
-      );
-      if (!response.ok) throw new Error('Failed to fetch revenue report');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching revenue report:', error);
-      throw error;
-    }
-  },
-
-  // Get order statistics
-  getOrderStats: async (dateFrom, dateTo, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/analytics/orders?from=${dateFrom}&to=${dateTo}`,
-        {
-          method: 'GET',
-          headers: getHeaders(tenantId),
-        }
-      );
-      if (!response.ok) throw new Error('Failed to fetch order statistics');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching order statistics:', error);
-      throw error;
-    }
-  },
-
-  // Get customer analytics
-  getCustomerAnalytics: async (dateFrom, dateTo, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/analytics/customers?from=${dateFrom}&to=${dateTo}`,
-        {
-          method: 'GET',
-          headers: getHeaders(tenantId),
-        }
-      );
-      if (!response.ok) throw new Error('Failed to fetch customer analytics');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching customer analytics:', error);
-      throw error;
-    }
-  },
-
-  // Get staff performance report
-  getStaffPerformance: async (dateFrom, dateTo, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/analytics/staff-performance?from=${dateFrom}&to=${dateTo}`,
-        {
-          method: 'GET',
-          headers: getHeaders(tenantId),
-        }
-      );
-      if (!response.ok) throw new Error('Failed to fetch staff performance');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching staff performance:', error);
-      throw error;
-    }
-  },
-
-  // Get branch comparison
-  getBranchComparison: async (dateFrom, dateTo, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/analytics/branch-comparison?from=${dateFrom}&to=${dateTo}`,
-        {
-          method: 'GET',
-          headers: getHeaders(tenantId),
-        }
-      );
-      if (!response.ok) throw new Error('Failed to fetch branch comparison');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching branch comparison:', error);
-      throw error;
-    }
-  },
-
-  // Get payment method breakdown
-  getPaymentMethodBreakdown: async (dateFrom, dateTo, tenantId = 'default_tenant') => {
-    try {
-      const response = await fetch(
-        `${API_BASE_URL}/analytics/payment-methods?from=${dateFrom}&to=${dateTo}`,
-        {
-          method: 'GET',
-          headers: getHeaders(tenantId),
-        }
-      );
-      if (!response.ok) throw new Error('Failed to fetch payment method breakdown');
-      return await response.json();
-    } catch (error) {
-      console.error('Error fetching payment method breakdown:', error);
-      throw error;
-    }
-  },
-};
-
-// ============================================================================
-// EXPORT ALL APIs
-// ============================================================================
-
-export default {
-  ordersAPI,
-  customersAPI,
-  staffAPI,
-  machinesAPI,
-  paymentsAPI,
-  branchesAPI,
-  analyticsAPI,
-};
+//
