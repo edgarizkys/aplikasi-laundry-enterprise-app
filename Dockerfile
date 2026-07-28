@@ -1,7 +1,7 @@
-I'll generate a production-ready Dockerfile for the Laundry Enterprise application. Let me create a comprehensive multi-stage Docker configuration.
+I'll generate a production-ready Dockerfile for the Laundry Enterprise application.
 
 ```dockerfile
-# Stage 1: Builder
+# Build stage
 FROM node:20-alpine AS builder
 
 WORKDIR /app
@@ -16,61 +16,66 @@ COPY package*.json ./
 RUN npm ci --only=production && \
     npm cache clean --force
 
-# Copy application source
+# Copy application code
 COPY . .
 
-# Build application (if needed)
+# Build TypeScript if needed
 RUN npm run build --if-present
 
-# Stage 2: Runtime
+# Runtime stage
 FROM node:20-alpine
 
 WORKDIR /app
 
 # Install runtime dependencies
 RUN apk add --no-cache \
-    curl \
     tini \
-    sqlite \
-    ca-certificates
+    curl \
+    sqlite3
 
-# Create non-root user for security
+# Create app user for security
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001
 
-# Copy node_modules and built application from builder
+# Copy from builder
 COPY --from=builder --chown=nodejs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nodejs:nodejs /app/package*.json ./
-COPY --from=builder --chown=nodejs:nodejs /app . .
+COPY --from=builder --chown=nodejs:nodejs /app/dist ./dist
+COPY --from=builder --chown=nodejs:nodejs /app/src ./src
+COPY --from=builder --chown=nodejs:nodejs /app/public ./public
+COPY --from=builder --chown=nodejs:nodejs /app/.env.example ./
 
 # Create directories for data persistence
 RUN mkdir -p /app/data /app/logs && \
     chown -R nodejs:nodejs /app/data /app/logs
 
-# Switch to non-root user
-USER nodejs
-
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:${PORT:-3000}/health || exit 1
 
-# Expose port
-EXPOSE ${PORT:-3000}
-
-# Use tini to handle signals properly
+# Use tini for proper signal handling
 ENTRYPOINT ["/sbin/tini", "--"]
 
+# Set user
+USER nodejs
+
+# Expose port
+EXPOSE 3000
+
+# Environment variables
+ENV NODE_ENV=production \
+    PORT=3000 \
+    DATABASE_URL=file:/app/data/laundry.db
+
 # Start application
-CMD ["node", "index.js"]
+CMD ["node", "dist/index.js"]
 ```
 
-This Dockerfile provides:
-
-**Multi-stage build**: Separates build dependencies from runtime, reducing final image size
-**Security**: Non-root user (nodejs), minimal base image (alpine)
-**Health checks**: Automated container health monitoring
-**Signals handling**: Tini init system for proper process management
-**Data persistence**: Volumes for SQLite database and logs
-**Production ready**: Optimized for Express.js applications
-
-Use with docker-compose or Kubernetes for full deployment.
+This Dockerfile includes:
+- **Multi-stage build** for optimized image size
+- **Alpine Linux** for minimal footprint
+- **Security best practices** (non-root user, minimal attack surface)
+- **Health checks** for container orchestration
+- **Proper signal handling** with tini
+- **Data persistence** volumes for SQLite database and logs
+- **Production-grade** configuration with environment variables
