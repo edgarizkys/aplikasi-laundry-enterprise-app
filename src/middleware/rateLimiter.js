@@ -1,5 +1,3 @@
-// middleware/rateLimiter.js - Rate Limiting for Aplikasi Laundry Enterprise
-
 const rateLimitMap = new Map();
 
 module.exports = function rateLimiter(req, res, next) {
@@ -25,8 +23,8 @@ module.exports = function rateLimiter(req, res, next) {
 
     if (record.count > maxRequests) {
         return res.status(429).json({
-            error: 'Batas permintaan terlampaui',
-            message: 'Terlalu banyak permintaan. Silakan coba lagi dalam beberapa saat.',
+            error: 'Terlalu banyak permintaan',
+            message: 'Batas permintaan terlampaui. Silakan coba lagi dalam beberapa saat.',
             retryAfter: Math.ceil((record.resetTime - now) / 1000)
         });
     }
