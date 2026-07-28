@@ -1,454 +1,373 @@
-I'll generate the production-ready dashboard.html for the Laundry Enterprise application. This will be a comprehensive CRUD + Analytics dashboard with all entities.
-<function_calls>
-<invoke name="write_to_file">
-<parameter name="path">public/dashboard.html</parameter>
-<parameter name="content"><!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aplikasi Laundry Enterprise - Dashboard</title>
+    <title>Dashboard - Aplikasi Laundry Enterprise</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <style>
         :root {
-            --accent-from: #3B82F6;
-            --accent-to: #10B981;
+            --accent-from: #6366F1;
+            --accent-to: #06B6D4;
         }
-        .gradient-bg {
-            background: linear-gradient(135deg, var(--accent-from), var(--accent-to));
-        }
-        .gradient-text {
-            background: linear-gradient(135deg, var(--accent-from), var(--accent-to));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-        .glass {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-        .card-hover {
-            transition: all 0.3s ease;
-        }
-        .card-hover:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
-        }
-        .sidebar-active {
-            background: linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(16, 185, 129, 0.2));
-            border-left: 4px solid var(--accent-from);
-        }
-        .badge-success {
-            background: rgba(16, 185, 129, 0.2);
-            color: #10B981;
-            border: 1px solid #10B981;
-        }
-        .badge-warning {
-            background: rgba(245, 158, 11, 0.2);
-            color: #F59E0B;
-            border: 1px solid #F59E0B;
-        }
-        .badge-danger {
-            background: rgba(239, 68, 68, 0.2);
-            color: #EF4444;
-            border: 1px solid #EF4444;
-        }
-        .badge-info {
-            background: rgba(59, 130, 246, 0.2);
-            color: #3B82F6;
-            border: 1px solid #3B82F6;
-        }
-        .table-container {
-            overflow-x: auto;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
-        th {
-            background: rgba(59, 130, 246, 0.1);
-            padding: 12px;
-            text-align: left;
-            font-weight: 600;
-            border-bottom: 2px solid rgba(59, 130, 246, 0.2);
-        }
-        td {
-            padding: 12px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        tr:hover {
-            background: rgba(59, 130, 246, 0.05);
-        }
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-        }
-        .modal.active {
-            display: flex;
-        }
-        .modal-content {
-            background: #1F2937;
-            border-radius: 12px;
-            padding: 30px;
-            max-width: 600px;
-            width: 90%;
-            max-height: 80vh;
-            overflow-y: auto;
-            border: 1px solid rgba(59, 130, 246, 0.2);
-        }
-        .input-field {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(59, 130, 246, 0.3);
-            border-radius: 8px;
-            padding: 10px 14px;
-            color: white;
-            width: 100%;
-            transition: all 0.3s;
-        }
-        .input-field:focus {
-            outline: none;
-            background: rgba(255, 255, 255, 0.08);
-            border-color: var(--accent-from);
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-        }
-        .btn-primary {
-            background: linear-gradient(135deg, var(--accent-from), var(--accent-to));
-            color: white;
-            padding: 10px 20px;
-            border-radius: 8px;
-            border: none;
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.3s;
-        }
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(59, 130, 246, 0.3);
-        }
-        .btn-secondary {
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            padding: 10px 20px;
-            border-radius: 8px;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            cursor: pointer;
-            font-weight: 600;
-            transition: all 0.3s;
-        }
-        .btn-secondary:hover {
-            background: rgba(255, 255, 255, 0.15);
-        }
-        .btn-danger {
-            background: rgba(239, 68, 68, 0.2);
-            color: #EF4444;
-            border: 1px solid #EF4444;
-        }
-        .btn-danger:hover {
-            background: rgba(239, 68, 68, 0.3);
-        }
-        .pagination {
-            display: flex;
-            gap: 8px;
-            justify-content: center;
-            margin-top: 20px;
-            flex-wrap: wrap;
-        }
-        .pagination button {
-            padding: 8px 12px;
-            border-radius: 6px;
-            border: 1px solid rgba(59, 130, 246, 0.3);
-            background: rgba(59, 130, 246, 0.1);
-            color: white;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        .pagination button.active {
-            background: linear-gradient(135deg, var(--accent-from), var(--accent-to));
-            border-color: var(--accent-from);
-        }
-        .search-box {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(59, 130, 246, 0.3);
-            border-radius: 8px;
-            padding: 10px 14px;
-            color: white;
-            width: 100%;
-            max-width: 300px;
-        }
-        .toast {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            padding: 15px 20px;
-            border-radius: 8px;
-            background: rgba(16, 185, 129, 0.2);
-            border: 1px solid #10B981;
-            color: #10B981;
-            z-index: 2000;
-            animation: slideIn 0.3s ease;
-        }
-        .toast.error {
-            background: rgba(239, 68, 68, 0.2);
-            border-color: #EF4444;
-            color: #EF4444;
-        }
-        @keyframes slideIn {
-            from {
-                transform: translateX(400px);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-        .stat-card {
-            background: rgba(59, 130, 246, 0.1);
-            border: 1px solid rgba(59, 130, 246, 0.2);
-            border-radius: 12px;
-            padding: 20px;
-            transition: all 0.3s;
-        }
-        .stat-card:hover {
-            background: rgba(59, 130, 246, 0.15);
-            transform: translateY(-5px);
-        }
-        .stat-card.green {
-            background: rgba(16, 185, 129, 0.1);
-            border-color: rgba(16, 185, 129, 0.2);
-        }
-        .stat-card.green:hover {
-            background: rgba(16, 185, 129, 0.15);
-        }
-        .chart-container {
-            position: relative;
-            height: 300px;
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(59, 130, 246, 0.2);
-            border-radius: 12px;
-            padding: 20px;
-        }
-        .loading {
-            display: inline-block;
-            width: 20px;
-            height: 20px;
-            border: 3px solid rgba(59, 130, 246, 0.3);
-            border-radius: 50%;
-            border-top-color: var(--accent-from);
-            animation: spin 0.6s linear infinite;
-        }
-        @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
-        }
-        .empty-state {
-            text-align: center;
-            padding: 40px;
-            color: #9CA3AF;
-        }
-        .empty-state svg {
-            width: 80px;
-            height: 80px;
-            margin: 0 auto 20px;
-            opacity: 0.5;
-        }
+        .gradient-bg { background: linear-gradient(135deg, var(--accent-from), var(--accent-to)); }
+        .gradient-text { background: linear-gradient(135deg, var(--accent-from), var(--accent-to)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+        .glass { background: rgba(255,255,255,0.1); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.2); }
+        .card-hover { transition: all 0.3s ease; }
+        .card-hover:hover { transform: translateY(-4px); box-shadow: 0 20px 40px rgba(0,0,0,0.3); }
+        .sidebar-active { background: linear-gradient(135deg, var(--accent-from), var(--accent-to)); }
+        .btn-primary { background: linear-gradient(135deg, var(--accent-from), var(--accent-to)); transition: all 0.3s; }
+        .btn-primary:hover { transform: scale(1.02); box-shadow: 0 10px 25px rgba(99, 102, 241, 0.4); }
+        .status-processing { color: #F59E0B; }
+        .status-completed { color: #10B981; }
+        .status-pending { color: #EF4444; }
+        .table-striped tbody tr:nth-child(odd) { background-color: rgba(255,255,255,0.02); }
+        .modal-backdrop { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 40; }
+        .modal-backdrop.active { display: flex; align-items: center; justify-content: center; }
+        .modal-content { background: #1F2937; border-radius: 12px; max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto; }
+        .input-field { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 12px; border-radius: 8px; transition: all 0.3s; }
+        .input-field:focus { background: rgba(255,255,255,0.1); border-color: var(--accent-from); outline: none; }
+        .badge { padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+        .badge-success { background: rgba(16, 185, 129, 0.2); color: #10B981; }
+        .badge-warning { background: rgba(245, 158, 11, 0.2); color: #F59E0B; }
+        .badge-danger { background: rgba(239, 68, 68, 0.2); color: #EF4444; }
+        .spinner { display: inline-block; width: 20px; height: 20px; border: 3px solid rgba(255,255,255,0.3); border-top-color: var(--accent-to); border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .notification { position: fixed; top: 20px; right: 20px; padding: 16px 24px; border-radius: 8px; color: white; z-index: 50; animation: slideIn 0.3s ease; }
+        .notification-success { background: #10B981; }
+        .notification-error { background: #EF4444; }
+        @keyframes slideIn { from { transform: translateX(400px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
     </style>
 </head>
-<body class="bg-gray-950 text-white">
+<body class="bg-gray-900 text-gray-100">
     <div class="flex h-screen overflow-hidden">
         <!-- Sidebar -->
-        <div class="w-64 bg-gray-900 border-r border-gray-800 overflow-y-auto">
-            <div class="p-6">
-                <h1 class="text-2xl font-bold gradient-text">LaundryHub</h1>
-                <p class="text-sm text-gray-400 mt-1">Enterprise Management</p>
+        <aside class="w-64 bg-gray-800 border-r border-gray-700 overflow-y-auto">
+            <div class="p-6 border-b border-gray-700">
+                <h1 class="gradient-text text-2xl font-bold">Laundry Enterprise</h1>
+                <p class="text-gray-400 text-sm mt-1">Dashboard Admin</p>
             </div>
             
-            <nav class="mt-8">
-                <button onclick="switchTab('dashboard')" class="nav-btn sidebar-active w-full text-left px-6 py-3 flex items-center gap-3 transition">
-                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4z"></path><path d="M3 10a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H4a1 1 0 01-1-1v-6z"></path><path d="M14 9a1 1 0 00-1 1v6a1 1 0 001 1h2a1 1 0 001-1v-6a1 1 0 00-1-1h-2z"></path></svg>
+            <nav class="mt-8 px-4 space-y-2">
+                <a href="#dashboard" class="nav-link sidebar-active flex items-center px-4 py-3 rounded-lg text-white font-medium transition" data-section="dashboard">
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-3m0 0l7-4 7 4M5 9v10a1 1 0 001 1h12a1 1 0 001-1V9m-9 16l4-4m0 0l4 4m-4-4v4"></path></svg>
                     Dashboard
-                </button>
-                
-                <button onclick="switchTab('orders')" class="nav-btn w-full text-left px-6 py-3 flex items-center gap-3 transition hover:bg-gray-800">
-                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M3 1a1 1 0 000 2h1.22l.305 1.222a.997.997 0 00.01.042l1.358 5.43-.893.892C3.74 11.846 4.632 14 6.414 14H15a1 1 0 000-2H6.414l1-1H14a1 1 0 00.894-.553l3-6A1 1 0 0017 6H6.28l-.31-1.243A1 1 0 005 4H3z"></path><circle cx="5" cy="16" r="1.5"></circle><circle cx="13" cy="16" r="1.5"></circle></svg>
+                </a>
+                <a href="#orders" class="nav-link flex items-center px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 transition" data-section="orders">
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                     Pesanan
-                </button>
-                
-                <button onclick="switchTab('customers')" class="nav-btn w-full text-left px-6 py-3 flex items-center gap-3 transition hover:bg-gray-800">
-                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM9 1H0v5.25C0 7.168 2.612 9 6 9s6-1.832 6-2.75V1z"></path><path d="M13 13a6 6 0 100 12h7v-3a9 9 0 00-7-8.972V13z"></path></svg>
+                </a>
+                <a href="#customers" class="nav-link flex items-center px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 transition" data-section="customers">
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-2a6 6 0 0112 0v2z"></path></svg>
                     Pelanggan
-                </button>
-                
-                <button onclick="switchTab('staff')" class="nav-btn w-full text-left px-6 py-3 flex items-center gap-3 transition hover:bg-gray-800">
-                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10.5 1.5H5.75a2 2 0 00-2 2v2.5a2 2 0 002 2h9.5a2 2 0 002-2v-2.5a2 2 0 00-2-2H10.5z"></path><path d="M3.5 6a2 2 0 00-2 2v2.5a2 2 0 002 2h2v-8h-2z"></path><path d="M16.5 6v4.5h2a2 2 0 002-2v-2.5a2 2 0 00-2-2h-2z"></path><path d="M3.5 12a2 2 0 00-2 2v2.5a2 2 0 002 2h13a2 2 0 002-2v-2.5a2 2 0 00-2-2h-13z"></path></svg>
+                </a>
+                <a href="#staff" class="nav-link flex items-center px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 transition" data-section="staff">
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.856-1.487M15 10a3 3 0 11-6 0 3 3 0 016 0zM6 20H1v-2a3 3 0 015.856-1.487M13 16a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                     Staff
-                </button>
-                
-                <button onclick="switchTab('machines')" class="nav-btn w-full text-left px-6 py-3 flex items-center gap-3 transition hover:bg-gray-800">
-                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"></path></svg>
-                    Mesin
-                </button>
-                
-                <button onclick="switchTab('payments')" class="nav-btn w-full text-left px-6 py-3 flex items-center gap-3 transition hover:bg-gray-800">
-                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm12 4a2 2 0 012 2v4a2 2 0 01-2 2H4v2a2 2 0 002 2h12a2 2 0 002-2v-6a2 2 0 00-2-2z"></path></svg>
+                </a>
+                <a href="#services" class="nav-link flex items-center px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 transition" data-section="services">
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                    Layanan
+                </a>
+                <a href="#payments" class="nav-link flex items-center px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 transition" data-section="payments">
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                     Pembayaran
-                </button>
-                
-                <button onclick="switchTab('branches')" class="nav-btn w-full text-left px-6 py-3 flex items-center gap-3 transition hover:bg-gray-800">
-                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z"></path></svg>
-                    Cabang
-                </button>
+                </a>
+                <a href="#inventory" class="nav-link flex items-center px-4 py-3 rounded-lg text-gray-300 hover:bg-gray-700 transition" data-section="inventory">
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m0 0l8 4m-8-4v10l8 4m0-10l8 4m-8-4v10l8 4M3 7v10l9 5 9-5V7"></path></svg>
+                    Inventori
+                </a>
             </nav>
-            
-            <div class="absolute bottom-0 left-0 right-0 p-6 border-t border-gray-800">
-                <button onclick="logout()" class="w-full btn-secondary text-sm">
-                    <svg class="w-4 h-4 inline mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clip-rule="evenodd"></path></svg>
-                    Keluar
+
+            <div class="absolute bottom-0 w-64 p-4 border-t border-gray-700">
+                <button onclick="logout()" class="w-full py-2 px-4 rounded-lg bg-gray-700 hover:bg-gray-600 text-gray-100 transition">
+                    Logout
                 </button>
             </div>
-        </div>
-        
+        </aside>
+
         <!-- Main Content -->
-        <div class="flex-1 flex flex-col overflow-hidden">
-            <!-- Header -->
-            <div class="bg-gray-900 border-b border-gray-800 px-8 py-4 flex items-center justify-between">
+        <main class="flex-1 overflow-auto">
+            <!-- Top Bar -->
+            <header class="bg-gray-800 border-b border-gray-700 px-8 py-4 flex justify-between items-center sticky top-0 z-30">
                 <div>
-                    <h2 class="text-2xl font-bold gradient-text" id="pageTitle">Dashboard</h2>
-                    <p class="text-sm text-gray-400 mt-1" id="pageSubtitle">Selamat datang kembali</p>
+                    <h2 id="page-title" class="text-2xl font-bold">Dashboard</h2>
+                    <p class="text-gray-400 text-sm">Selamat datang kembali</p>
                 </div>
-                <div class="flex items-center gap-4">
-                    <input type="text" id="searchInput" placeholder="Cari..." class="search-box hidden" onkeyup="handleSearch()">
-                    <button onclick="logout()" class="p-2 rounded-lg bg-gray-800 hover:bg-gray-700 transition">
-                        <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20"><path d="M11 3a1 1 0 100 2h2.586l-5.293 5.293a1 1 0 001.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z"></path><path d="M5 5a2 2 0 00-2 2v8a2 2 0 002 2h8a2 2 0 002-2v-3a1 1 0 10-2 0v3H5V7h3a1 1 0 000-2H5z"></path></svg>
+                <div class="flex items-center space-x-4">
+                    <button class="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition" onclick="toggleSearch()">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                     </button>
+                    <button class="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition relative" id="notif-btn">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"></path></svg>
+                        <span class="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full"></span>
+                    </button>
+                    <div class="flex items-center space-x-3 pl-4 border-l border-gray-700">
+                        <div class="w-10 h-10 rounded-full gradient-bg flex items-center justify-center font-bold">A</div>
+                        <div>
+                            <p class="font-semibold text-sm">Admin User</p>
+                            <p class="text-gray-400 text-xs">Organizer</p>
+                        </div>
+                    </div>
                 </div>
-            </div>
-            
-            <!-- Content Area -->
-            <div class="flex-1 overflow-y-auto">
-                <div class="p-8">
-                    <!-- Dashboard Tab -->
-                    <div id="dashboard-tab" class="tab-content">
-                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                            <div class="stat-card">
-                                <div class="flex items-center justify-between">
-                                    <div>
-                                        <p class="text-gray-400 text-sm">Total Pesanan</p>
-                                        <p class="text-3xl font-bold mt-2" id="totalOrders">0</p>
-                                    </div>
-                                    <svg class="w-12 h-12 opacity-20" fill="currentColor" viewBox="0 0 20 20"><path d="M3 1a1 1 0 000 2h1.22l.305 1.222a.997.997 0 00.01.042l1.358 5.43-.893.892C3.74 11.846 4.632 14 6.414 14H15a1 1 0 000-2H6.414l1-1H14a1 1 0 00.894-.553l3-6A1 1 0 0017 6H6.28l-.31-1.243A1 1 0 005 4H3z"></path></svg>
+            </header>
+
+            <!-- Page Content -->
+            <div class="p-8">
+                <!-- Dashboard Section -->
+                <section id="dashboard-section" class="section-content">
+                    <div class="grid md:grid-cols-4 gap-6 mb-8">
+                        <div class="bg-gray-800 rounded-lg p-6 border border-gray-700 card-hover">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <p class="text-gray-400 text-sm">Total Pesanan</p>
+                                    <h3 class="text-3xl font-bold mt-2" id="total-orders">-</h3>
+                                    <p class="text-green-400 text-sm mt-2">+12% bulan ini</p>
                                 </div>
-                            </div>
-                            
-                            <div class="stat-card green">
-                                <div class="flex items-center justify-between">
-                                    <div>
-                                        <p class="text-gray-400 text-sm">Total Pelanggan</p>
-                                        <p class="text-3xl font-bold mt-2" id="totalCustomers">0</p>
-                                    </div>
-                                    <svg class="w-12 h-12 opacity-20" fill="currentColor" viewBox="0 0 20 20"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM9 1H0v5.25C0 7.168 2.612 9 6 9s6-1.832 6-2.75V1z"></path><path d="M13 13a6 6 0 100 12h7v-3a9 9 0 00-7-8.972V13z"></path></svg>
-                                </div>
-                            </div>
-                            
-                            <div class="stat-card">
-                                <div class="flex items-center justify-between">
-                                    <div>
-                                        <p class="text-gray-400 text-sm">Total Pemasukan</p>
-                                        <p class="text-3xl font-bold mt-2" id="totalRevenue">Rp 0</p>
-                                    </div>
-                                    <svg class="w-12 h-12 opacity-20" fill="currentColor" viewBox="0 0 20 20"><path d="M8.16 2.75a.75.75 0 00-1.32 0l-.478 1.529a.75.75 0 01-.563.563l-1.529.478a.75.75 0 000 1.32l1.529.478a.75.75 0 01.563.563l.478 1.529a.75.75 0 001.32 0l.478-1.529a.75.75 0 01.563-.563l1.529-.478a.75.75 0 000-1.32l-1.529-.478a.75.75 0 01-.563-.563L8.16 2.75zM13.5 13a.75.75 0 00-.75.75v2.69l-.97-.97a.75.75 0 10-1.06 1.061L12.69 18l-1.97 1.97a.75.75 0 101.061 1.06l.97-.97v2.69a.75.75 0 001.5 0v-2.69l.97.97a.75.75 0 001.06-1.06L13.31 18l1.97-1.97a.75.75 0 10-1.06-1.061l-.97.97v-2.69a.75.75 0 00-.75-.75z"></path></svg>
-                                </div>
-                            </div>
-                            
-                            <div class="stat-card">
-                                <div class="flex items-center justify-between">
-                                    <div>
-                                        <p class="text-gray-400 text-sm">Staff Aktif</p>
-                                        <p class="text-3xl font-bold mt-2" id="activeStaff">0</p>
-                                    </div>
-                                    <svg class="w-12 h-12 opacity-20" fill="currentColor" viewBox="0 0 20 20"><path d="M10.5 1.5H5.75a2 2 0 00-2 2v2.5a2 2 0 002 2h9.5a2 2 0 002-2v-2.5a2 2 0 00-2-2H10.5z"></path></svg>
+                                <div class="p-3 rounded-lg gradient-bg">
+                                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
                                 </div>
                             </div>
                         </div>
-                        
-                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-                            <div class="chart-container">
-                                <h3 class="text-lg font-bold mb-4">Status Pesanan</h3>
-                                <canvas id="orderStatusChart"></canvas>
+
+                        <div class="bg-gray-800 rounded-lg p-6 border border-gray-700 card-hover">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <p class="text-gray-400 text-sm">Total Pelanggan</p>
+                                    <h3 class="text-3xl font-bold mt-2" id="total-customers">-</h3>
+                                    <p class="text-green-400 text-sm mt-2">+8% bulan ini</p>
+                                </div>
+                                <div class="p-3 rounded-lg gradient-bg">
+                                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-2a6 6 0 0112 0v2z"></path></svg>
+                                </div>
                             </div>
-                            <div class="chart-container">
-                                <h3 class="text-lg font-bold mb-4">Metode Pembayaran</h3>
-                                <canvas id="paymentMethodChart"></canvas>
+                        </div>
+
+                        <div class="bg-gray-800 rounded-lg p-6 border border-gray-700 card-hover">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <p class="text-gray-400 text-sm">Pendapatan Hari Ini</p>
+                                    <h3 class="text-3xl font-bold mt-2" id="today-revenue">-</h3>
+                                    <p class="text-green-400 text-sm mt-2">+5% vs kemarin</p>
+                                </div>
+                                <div class="p-3 rounded-lg gradient-bg">
+                                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="bg-gray-800 rounded-lg p-6 border border-gray-700 card-hover">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <p class="text-gray-400 text-sm">Pesanan Diproses</p>
+                                    <h3 class="text-3xl font-bold mt-2" id="processing-orders">-</h3>
+                                    <p class="text-yellow-400 text-sm mt-2">Menunggu penyelesaian</p>
+                                </div>
+                                <div class="p-3 rounded-lg gradient-bg">
+                                    <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    
-                    <!-- Orders Tab -->
-                    <div id="orders-tab" class="tab-content hidden">
-                        <div class="flex items-center justify-between mb-6">
-                            <h3 class="text-2xl font-bold">Manajemen Pesanan</h3>
-                            <button onclick="openModal('orderModal')" class="btn-primary">
-                                <svg class="w-5 h-5 inline mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"></path></svg>
-                                Tambah Pesanan
-                            </button>
+
+                    <div class="grid md:grid-cols-2 gap-6">
+                        <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                            <h3 class="text-lg font-semibold mb-4">Pesanan Terbaru</h3>
+                            <div class="space-y-3" id="recent-orders-list">
+                                <div class="text-center py-8 text-gray-400">
+                                    <div class="spinner mx-auto mb-3"></div>
+                                    Loading...
+                                </div>
+                            </div>
                         </div>
-                        
-                        <div class="mb-6 flex gap-4">
-                            <input type="text" id="orderSearch" placeholder="Cari nomor pesanan..." class="search-box flex-1" onkeyup="filterTable('orders')">
-                            <select id="orderStatusFilter" class="input-field w-48" onchange="filterTable('orders')">
-                                <option value="">Semua Status</option>
-                                <option value="pending">Pending</option>
-                                <option value="processing">Diproses</option>
-                                <option value="completed">Selesai</option>
-                                <option value="delivered">Dikirim</option>
-                            </select>
+
+                        <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                            <h3 class="text-lg font-semibold mb-4">Grafik Revenue</h3>
+                            <canvas id="revenue-chart" height="80"></canvas>
                         </div>
-                        
-                        <div class="table-container bg-gray-900 rounded-lg overflow-hidden border border-gray-800">
-                            <table>
-                                <thead>
+                    </div>
+                </section>
+
+                <!-- Orders Section -->
+                <section id="orders-section" class="section-content hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-bold">Kelola Pesanan</h2>
+                        <button onclick="openModal('order')" class="btn-primary px-6 py-2 rounded-lg text-white font-medium">
+                            + Pesanan Baru
+                        </button>
+                    </div>
+
+                    <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                        <div class="p-4 border-b border-gray-700">
+                            <input type="text" id="orders-search" placeholder="Cari nomor pesanan atau pelanggan..." class="input-field w-full">
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full table-striped">
+                                <thead class="bg-gray-700 border-b border-gray-600">
                                     <tr>
-                                        <th>No. Pesanan</th>
-                                        <th>Pelanggan</th>
-                                        <th>Telepon</th>
-                                        <th>Layanan</th>
-                                        <th>Total Harga</th>
-                                        <th>Status</th>
-                                        <th>Tanggal Selesai</th>
-                                        <th>Aksi</th>
+                                        <th class="px-6 py-3 text-left font-semibold">Nomor Pesanan</th>
+                                        <th class="px-6 py-3 text-left font-semibold">Pelanggan</th>
+                                        <th class="px-6 py-3 text-left font-semibold">Berat</th>
+                                        <th class="px-6 py-3 text-left font-semibold">Status</th>
+                                        <th class="px-6 py-3 text-left font-semibold">Harga</th>
+                                        <th class="px-6 py-3 text-left font-semibold">Aksi</th>
                                     </tr>
                                 </thead>
-                                <tbody id="ordersTable"></tbody>
+                                <tbody id="orders-table" class="divide-y divide-gray-700">
+                                    <tr class="text-center py-8">
+                                        <td colspan="6" class="py-8">
+                                            <div class="spinner mx-auto mb-2"></div>
+                                            Loading...
+                                        </td>
+                                    </tr>
+                                </tbody>
                             </table>
                         </div>
-                        <div class="pagination" id="ordersPagination"></div>
                     </div>
-                    
-                    <!-- Customers Tab -->
-                    <div id="customers-tab" class="tab-content hidden">
-                        <div class="flex items-center justify-between mb-6">
-                            <h3 class="text-2xl font-bold">Manajemen Pelanggan</h3>
-                            <button onclick="openModal('customerModal')" class="btn-primary">
-                                <svg class="w-5 h-5 inline mr-2" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clip-rule="evenodd"></path></svg>
-                                Tambah Pelanggan
-                            </button>
+                </section>
+
+                <!-- Customers Section -->
+                <section id="customers-section" class="section-content hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-bold">Kelola Pelanggan</h2>
+                        <button onclick="openModal('customer')" class="btn-primary px-6 py-2 rounded-lg text-white font-medium">
+                            + Pelanggan Baru
+                        </button>
+                    </div>
+
+                    <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                        <div class="p-4 border-b border-gray-700">
+                            <input type="text" id="customers-search" placeholder="Cari nama atau nomor pelanggan..." class="input-field w-full">
                         </div>
-                        
-                        <div class="mb-6">
-                            <input type="text" id="customerSearch" placeholder="Cari nama pelanggan..." class="search-box" onkeyup="filterTable('customers')">
+                        <div class="overflow-x-auto">
+                            <table class="w-full table-striped">
+                                <thead class="bg-gray-700 border-b border-gray-600">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left font-semibold">ID Pelanggan</th>
+                                        <th class="px-6 py-3 text-left font-semibold">Nama</th>
+                                        <th class="px-6 py-3 text-left font-semibold">Telepon</th>
+                                        <th class="px-6 py-3 text-left font-semibold">Tier</th>
+                                        <th class="px-6 py-3 text-left font-semibold">Total Belanja</th>
+                                        <th class="px-6 py-3 text-left font-semibold">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="customers-table" class="divide-y divide-gray-700">
+                                    <tr class="text-center">
+                                        <td colspan="6" class="py-8">
+                                            <div class="spinner mx-auto mb-2"></div>
+                                            Loading...
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
-                        
-                        <div class="table-container bg-gray-900 rounded-lg overflow-hidden border border-gray-800">
-                            <table>
+                    </div>
+                </section>
+
+                <!-- Staff Section -->
+                <section id="staff-section" class="section-content hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-bold">Kelola Staff</h2>
+                        <button onclick="openModal('staff')" class="btn-primary px-6 py-2 rounded-lg text-white font-medium">
+                            + Staff Baru
+                        </button>
+                    </div>
+
+                    <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                        <div class="p-4 border-b border-gray-700">
+                            <input type="text" id="staff-search" placeholder="Cari nama staff atau posisi..." class="input-field w-full">
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full table-striped">
+                                <thead class="bg-gray-700 border-b border-gray-600">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left font-semibold">ID Staff</th>
+                                        <th class="px-6 py-3 text-left font-semibold">Nama</th>
+                                        <th class="px-6 py-3 text-left font-semibold">Posisi</th>
+                                        <th class="px-6 py-3 text-left font-semibold">Telepon</th>
+                                        <th class="px-6 py-3 text-left font-semibold">Status</th>
+                                        <th class="px-6 py-3 text-left font-semibold">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="staff-table" class="divide-y divide-gray-700">
+                                    <tr class="text-center">
+                                        <td colspan="6" class="py-8">
+                                            <div class="spinner mx-auto mb-2"></div>
+                                            Loading...
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Services Section -->
+                <section id="services-section" class="section-content hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-bold">Kelola Layanan</h2>
+                        <button onclick="openModal('service')" class="btn-primary px-6 py-2 rounded-lg text-white font-medium">
+                            + Layanan Baru
+                        </button>
+                    </div>
+
+                    <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6" id="services-grid">
+                        <div class="text-center py-12 text-gray-400">
+                            <div class="spinner mx-auto mb-3"></div>
+                            Loading...
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Payments Section -->
+                <section id="payments-section" class="section-content hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-bold">Kelola Pembayaran</h2>
+                    </div>
+
+                    <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                        <div class="p-4 border-b border-gray-700">
+                            <input type="text" id="payments-search" placeholder="Cari ID pembayaran atau pesanan..." class="input-field w-full">
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full table-striped">
+                                <thead class="bg-gray-700 border-b border-gray-600">
+                                    <tr>
+                                        <th class="px-6 py-3 text-left font-semibold">ID Pembayaran</th>
+                                        <th class="px-6 py-3 text-left font-semibold">Pesanan</th>
+                                        <th class="px-6 py-3 text-left font-semibold">Jumlah</th>
+                                        <th class="px-6 py-3 text-left font-semibold">Metode</th>
+                                        <th class="px-6 py-3 text-left font-semibold">Status</th>
+                                        <th class="px-6 py-3 text-left font-semibold">Tanggal</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="payments-table" class="divide-y divide-gray-700">
+                                    <tr class="text-center">
+                                        <td colspan="6" class="py-8">
+                                            <div class="spinner mx-auto mb-2"></div>
+                                            Loading...
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Inventory Section -->
+                <section id="inventory-section" class="section-content hidden">
+                    <div class="flex justify-between items-center mb-6">
+                        <h2 class="text-2xl font-bold">Kelola Inventori</h2>
+                        <button onclick="openModal('inventory')" class="btn-primary px-6 py-2 rounded-lg text-white font-medium">
+                            + Item Baru
+                        </button>
+                    </div>
+
+                    <div class="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
+                        <div class="p-4 border-b border-gray-700">
+                            <input type="text" id="inventory-search" placeholder="Cari nama item atau kategori..." class="input-field w-full">
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full table-striped">
+                                <thead class="bg-gray-700 border
