@@ -1,222 +1,182 @@
-// middleware/auth.js
+// middleware/auth.js - JWT Authentication & Authorization
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'laundry-enterprise-secret-key-2026';
+const JWT_SECRET = process.env.JWT_SECRET || 'laundry_enterprise_secret_key_2026';
 const JWT_EXPIRY = process.env.JWT_EXPIRY || '24h';
+
+// Role-based access control
+const RBAC = {
+  admin: ['orders', 'customers', 'employees', 'branches', 'services', 'payments', 'analytics'],
+  manager: ['orders', 'customers', 'employees', 'services', 'payments', 'analytics'],
+  operator: ['orders', 'customers', 'services'],
+  customer: ['orders', 'payments'],
+  guest: []
+};
 
 /**
  * Authentication Middleware
- * Verifies JWT tokens and attaches user context to request
- * Falls back to demo user for development/testing
+ * Verifies JWT token and attaches user to request
  */
-module.exports = function authMiddleware(req, res, next) {
-    try {
-        const authHeader = req.headers['authorization'];
-        
-        // Extract token from "Bearer <token>" format
-        if (!authHeader) {
-            // Demo mode: attach default user for development
-            req.user = {
-                id: 1,
-                email: 'demo@laundry.com',
-                name: 'Demo User',
-                role: 'admin',
-                tenant_id: 'tenant-demo-001',
-                permissions: ['read', 'write', 'delete', 'manage_staff']
-            };
-            req.isDemo = true;
-            return next();
-        }
+function authMiddleware(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.startsWith('Bearer ') 
+    ? authHeader.slice(7) 
+    : null;
 
-        const token = authHeader.startsWith('Bearer ') 
-            ? authHeader.slice(7) 
-            : authHeader;
-
-        // Verify and decode token
-        const decoded = jwt.verify(token, JWT_SECRET);
-        
-        req.user = {
-            id: decoded.id,
-            email: decoded.email,
-            name: decoded.name,
-            role: decoded.role || 'user',
-            tenant_id: decoded.tenant_id,
-            permissions: decoded.permissions || []
-        };
-        req.isDemo = false;
-        
-        next();
-    } catch (error) {
-        // Invalid or expired token
-        if (error.name === 'TokenExpiredError') {
-            return res.status(401).json({
-                error: 'Token telah kadaluarsa',
-                code: 'TOKEN_EXPIRED',
-                message: 'Silakan login kembali'
-            });
-        }
-        
-        if (error.name === 'JsonWebTokenError') {
-            return res.status(401).json({
-                error: 'Token tidak valid',
-                code: 'INVALID_TOKEN',
-                message: 'Silakan gunakan token yang benar'
-            });
-        }
-
-        return res.status(401).json({
-            error: 'Tidak terautentikasi',
-            code: 'UNAUTHORIZED',
-            message: error.message
-        });
+  // Demo mode: allow unauthenticated access with demo user
+  if (!token) {
+    if (process.env.NODE_ENV === 'development') {
+      req.user = {
+        id: 1,
+        email: 'demo@laundry.com',
+        name: 'Demo User',
+        role: 'admin',
+        tenant_id: 'tenant_001',
+        permissions: RBAC.admin,
+        iat: Math.floor(Date.now() / 1000)
+      };
+      return next();
     }
-};
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Token tidak ditemukan. Silakan login terlebih dahulu.'
+    });
+  }
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = {
+      ...decoded,
+      permissions: RBAC[decoded.role] || []
+    };
+    next();
+  } catch (error) {
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        error: 'TokenExpired',
+        message: 'Token telah kadaluarsa. Silakan login kembali.'
+      });
+    }
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({
+        error: 'InvalidToken',
+        message: 'Token tidak valid.'
+      });
+    }
+    res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Autentikasi gagal.'
+    });
+  }
+}
+
+/**
+ * Authorization Middleware
+ * Checks if user has required role/permission
+ */
+function authorize(requiredRoles = []) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({
+        error: 'Unauthorized',
+        message: 'User tidak ditemukan dalam request.'
+      });
+    }
+
+    const hasRole = requiredRoles.length === 0 || 
+                    requiredRoles.includes(req.user.role);
+
+    if (!hasRole) {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: `Akses ditolak. Diperlukan role: ${requiredRoles.join(', ')}`
+      });
+    }
+
+    next();
+  };
+}
 
 /**
  * Generate JWT Token
- * Used during login/registration
  */
-module.exports.generateToken = function(user, options = {}) {
-    const payload = {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role || 'user',
-        tenant_id: user.tenant_id,
-        permissions: user.permissions || []
-    };
+function generateToken(user) {
+  const payload = {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    tenant_id: user.tenant_id,
+    branch_id: user.branch_id || null
+  };
 
-    const tokenOptions = {
-        expiresIn: options.expiresIn || JWT_EXPIRY,
-        issuer: 'laundry-enterprise',
-        audience: 'laundry-app'
-    };
-
-    return jwt.sign(payload, JWT_SECRET, tokenOptions);
-};
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRY });
+}
 
 /**
- * Role-based Authorization Middleware
- * Restricts access based on user role
+ * Verify Token (for external verification)
  */
-module.exports.authorize = function(...allowedRoles) {
-    return (req, res, next) => {
-        if (!req.user) {
-            return res.status(401).json({
-                error: 'Tidak terautentikasi',
-                code: 'UNAUTHORIZED'
-            });
-        }
-
-        if (allowedRoles.length > 0 && !allowedRoles.includes(req.user.role)) {
-            return res.status(403).json({
-                error: 'Akses ditolak',
-                code: 'FORBIDDEN',
-                message: `Diperlukan role: ${allowedRoles.join(', ')}`
-            });
-        }
-
-        next();
-    };
-};
+function verifyToken(token) {
+  try {
+    return jwt.verify(token, JWT_SECRET);
+  } catch (error) {
+    return null;
+  }
+}
 
 /**
- * Permission-based Authorization Middleware
- * Restricts access based on user permissions
+ * Multi-tenant middleware
+ * Ensures user can only access their tenant data
  */
-module.exports.requirePermission = function(...requiredPermissions) {
-    return (req, res, next) => {
-        if (!req.user) {
-            return res.status(401).json({
-                error: 'Tidak terautentikasi',
-                code: 'UNAUTHORIZED'
-            });
-        }
+function multiTenantMiddleware(req, res, next) {
+  if (!req.user) {
+    return res.status(401).json({
+      error: 'Unauthorized',
+      message: 'User tidak terautentikasi.'
+    });
+  }
 
-        const hasPermission = requiredPermissions.every(perm => 
-            req.user.permissions && req.user.permissions.includes(perm)
-        );
+  // Attach tenant context to request
+  req.tenant = {
+    id: req.user.tenant_id,
+    userId: req.user.id,
+    branch_id: req.user.branch_id
+  };
 
-        if (!hasPermission) {
-            return res.status(403).json({
-                error: 'Akses ditolak',
-                code: 'FORBIDDEN',
-                message: `Diperlukan izin: ${requiredPermissions.join(', ')}`
-            });
-        }
-
-        next();
-    };
-};
+  next();
+}
 
 /**
- * Tenant Isolation Middleware
- * Ensures user can only access their own tenant's data
+ * Resource ownership check
+ * Ensures user only accesses their own resources
  */
-module.exports.tenantContext = function(req, res, next) {
-    if (!req.user) {
-        return res.status(401).json({
-            error: 'Tidak terautentikasi',
-            code: 'UNAUTHORIZED'
-        });
+function checkOwnership(resourceOwnerId) {
+  return (req, res, next) => {
+    // Admin can access everything
+    if (req.user.role === 'admin') {
+      return next();
     }
 
-    // Attach tenant_id to request for query filtering
-    req.tenant_id = req.user.tenant_id;
-    
-    next();
-};
-
-/**
- * Verify user is admin
- * Convenience middleware for admin-only routes
- */
-module.exports.requireAdmin = function(req, res, next) {
-    if (!req.user) {
-        return res.status(401).json({
-            error: 'Tidak terautentikasi',
-            code: 'UNAUTHORIZED'
-        });
-    }
-
-    if (req.user.role !== 'admin') {
-        return res.status(403).json({
-            error: 'Hanya admin yang dapat mengakses',
-            code: 'FORBIDDEN',
-            message: 'Anda tidak memiliki akses administratif'
-        });
+    // Check ownership
+    if (req.user.id !== resourceOwnerId && req.user.role !== 'manager') {
+      return res.status(403).json({
+        error: 'Forbidden',
+        message: 'Anda tidak memiliki akses ke resource ini.'
+      });
     }
 
     next();
-};
+  };
+}
 
-/**
- * Optional auth - doesn't fail if token missing
- * Useful for public endpoints with optional user context
- */
-module.exports.optionalAuth = function(req, res, next) {
-    try {
-        const authHeader = req.headers['authorization'];
-        
-        if (!authHeader) {
-            req.user = null;
-            req.isAuthenticated = false;
-            return next();
-        }
-
-        const token = authHeader.startsWith('Bearer ') 
-            ? authHeader.slice(7) 
-            : authHeader;
-
-        const decoded = jwt.verify(token, JWT_SECRET);
-        req.user = decoded;
-        req.isAuthenticated = true;
-        
-    } catch (error) {
-        // Silently ignore auth errors for optional routes
-        req.user = null;
-        req.isAuthenticated = false;
-    }
-    
-    next();
+module.exports = {
+  authMiddleware,
+  authorize,
+  generateToken,
+  verifyToken,
+  multiTenantMiddleware,
+  checkOwnership,
+  RBAC,
+  JWT_SECRET,
+  JWT_EXPIRY
 };
