@@ -1,27 +1,15 @@
 {
   "name": "laundry-enterprise",
   "version": "1.0.0",
-  "description": "Aplikasi Laundry Enterprise - Platform Enterprise Laundry",
+  "description": "Aplikasi Laundry Enterprise - Laundry Enterprise Platform",
   "main": "src/app.js",
-  "type": "module",
   "scripts": {
     "start": "node src/app.js",
     "dev": "nodemon src/app.js",
-    "test": "node --test test/**/*.test.js",
+    "test": "node test/unit.test.js",
     "lint": "eslint src/",
-    "seed": "node scripts/seed.js",
-    "migrate": "node scripts/migrate.js"
+    "seed": "node scripts/seed.js"
   },
-  "keywords": [
-    "laundry",
-    "enterprise",
-    "order-management",
-    "customer-loyalty",
-    "inventory",
-    "payment-processing"
-  ],
-  "author": "Laundry Enterprise Team",
-  "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",
     "cors": "^2.8.5",
@@ -31,20 +19,24 @@
     "jsonwebtoken": "^9.0.2",
     "bcryptjs": "^2.4.3",
     "uuid": "^9.0.0",
-    "axios": "^1.6.2",
-    "joi": "^17.11.0",
-    "pino": "^8.17.2",
-    "pino-http": "^8.6.1"
+    "express-validator": "^7.0.0",
+    "express-rate-limit": "^7.1.5",
+    "pdfkit": "^0.13.0",
+    "node-cron": "^3.0.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.1",
-    "eslint": "^8.53.0",
-    "eslint-config-prettier": "^9.1.0",
-    "eslint-plugin-prettier": "^5.0.1",
-    "prettier": "^3.1.0"
+    "eslint": "^8.52.0"
   },
   "engines": {
-    "node": ">=18.0.0",
-    "npm": ">=9.0.0"
-  }
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "laundry",
+    "enterprise",
+    "management",
+    "erp"
+  ],
+  "author": "Laundry Enterprise",
+  "license": "MIT"
 }
