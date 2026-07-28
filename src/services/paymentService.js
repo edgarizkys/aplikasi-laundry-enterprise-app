@@ -1,384 +1,468 @@
 // services/paymentService.js
 const crypto = require('crypto');
-const db = require('../config/database');
+const { db } = require('../config/database');
 
 class PaymentService {
     constructor() {
-        this.serverKey = process.env.PAYMENT_GATEWAY_KEY || 'secret-key-2026';
-        this.merchantId = process.env.PAYMENT_MERCHANT_ID || 'LAUNDRY-ENTERPRISE-001';
-        this.clientKey = process.env.PAYMENT_CLIENT_KEY || 'client-key-2026';
+        this.serverKey = process.env.PAYMENT_GATEWAY_KEY || 'laundry-enterprise-secret-key-2026';
+        this.merchantId = process.env.PAYMENT_MERCHANT_ID || 'LAUNDRY-MERCHANT-001';
+        this.qrisTimeout = 15 * 60 * 1000; // 15 minutes
+        this.vaTimeout = 24 * 60 * 60 * 1000; // 24 hours
     }
 
+    /**
+     * Create QRIS Payment Transaction
+     * QR Code format for instant payment via mobile banking
+     */
     async createQrisTransaction(orderId, amount, customerInfo = {}) {
         try {
-            if (!orderId || !amount || amount <= 0) {
-                throw new Error('Invalid order ID or amount');
-            }
-
             const referenceNo = `QRIS-${orderId}-${Date.now()}`;
-            const timestamp = new Date().toISOString();
-            
+            const expiresAt = new Date(Date.now() + this.qrisTimeout);
+
+            // Generate QR code data
+            const qrData = {
+                merchantId: this.merchantId,
+                orderId,
+                amount,
+                timestamp: new Date().toISOString(),
+                reference: referenceNo
+            };
+
+            const qrPayload = Buffer.from(JSON.stringify(qrData)).toString('base64');
+            const signature = this.generateSignature(qrPayload);
+
             const transaction = {
+                payment_id: `PAY-${Date.now()}`,
+                order_id: orderId,
+                amount,
+                payment_method: 'QRIS',
+                status: 'pending',
+                reference: referenceNo,
+                provider: 'Midtrans/Xendit',
+                channel: 'qris',
+                customer_name: customerInfo.name || 'Pelanggan',
+                customer_phone: customerInfo.phone || '',
+                customer_email: customerInfo.email || '',
+                expires_at: expiresAt.toISOString(),
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                metadata: JSON.stringify({
+                    qrCode: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(referenceNo)}`,
+                    deepLink: `https://link.midtrans.com/${referenceNo}`,
+                    signature
+                })
+            };
+
+            // Store transaction
+            await this.storeTransaction(transaction);
+
+            return {
                 success: true,
                 provider: 'Midtrans / Xendit',
+                paymentId: transaction.payment_id,
                 referenceNo,
                 orderId,
                 amount,
                 currency: 'IDR',
-                qrCodeUrl: `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(referenceNo)}`,
-                deepLink: `gopay://pay?amount=${amount}&ref=${referenceNo}`,
-                customerName: customerInfo.name || 'Pelanggan',
-                customerPhone: customerInfo.phone || '',
-                customerEmail: customerInfo.email || '',
-                expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-                createdAt: timestamp,
-                status: 'pending'
+                qrCodeUrl: `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(referenceNo)}`,
+                deepLink: `https://link.midtrans.com/${referenceNo}`,
+                customer: {
+                    name: customerInfo.name || 'Pelanggan',
+                    phone: customerInfo.phone || '',
+                    email: customerInfo.email || ''
+                },
+                expiresAt: expiresAt.toISOString(),
+                expiresIn: Math.floor(this.qrisTimeout / 1000)
             };
-
-            // Save to database
-            await db.execute(
-                `INSERT INTO payments (
-                    order_number, customer_name, amount, payment_method, 
-                    status, reference_number, payment_date, branch_id, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [
-                    orderId,
-                    customerInfo.name || 'Pelanggan',
-                    amount,
-                    'QRIS',
-                    'pending',
-                    referenceNo,
-                    new Date().toISOString().split('T')[0],
-                    customerInfo.branchId || 'BRANCH-001',
-                    timestamp
-                ]
-            );
-
-            return transaction;
         } catch (error) {
             throw new Error(`QRIS Transaction Error: ${error.message}`);
         }
     }
 
+    /**
+     * Create Virtual Account Payment
+     * Bank transfer payment with unique VA number
+     */
     async createVirtualAccountTransaction(orderId, amount, bank = 'BCA', customerInfo = {}) {
         try {
-            if (!orderId || !amount || amount <= 0) {
-                throw new Error('Invalid order ID or amount');
-            }
+            const vaNumber = `${this.getVAPrefix(bank)}${Math.floor(1000000000 + Math.random() * 9000000000)}`;
+            const expiresAt = new Date(Date.now() + this.vaTimeout);
 
-            const supportedBanks = ['BCA', 'BNI', 'MANDIRI', 'BTN'];
-            const bankCode = supportedBanks.includes(bank.toUpperCase()) ? bank.toUpperCase() : 'BCA';
-            
-            const vaNumber = `88008${Math.floor(10000000 + Math.random() * 90000000)}`;
-            const timestamp = new Date().toISOString();
-            
             const transaction = {
-                success: true,
-                provider: `${bankCode} Virtual Account`,
-                orderId,
+                payment_id: `PAY-${Date.now()}`,
+                order_id: orderId,
                 amount,
-                bank: bankCode,
-                vaNumber,
-                bankInstructions: this.getBankInstructions(bankCode, vaNumber),
-                instructions: `Transfer ke ${bankCode} VA: ${vaNumber} sebelum 24 jam.`,
-                customerName: customerInfo.name || 'Pelanggan',
-                customerPhone: customerInfo.phone || '',
-                customerEmail: customerInfo.email || '',
-                expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-                createdAt: timestamp,
-                status: 'pending'
+                payment_method: 'Bank Transfer',
+                status: 'pending',
+                reference: vaNumber,
+                provider: `${bank.toUpperCase()} Virtual Account`,
+                channel: 'virtual_account',
+                customer_name: customerInfo.name || 'Pelanggan',
+                customer_phone: customerInfo.phone || '',
+                customer_email: customerInfo.email || '',
+                expires_at: expiresAt.toISOString(),
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                metadata: JSON.stringify({
+                    bank: bank.toUpperCase(),
+                    vaNumber,
+                    instructions: `Transfer ke rekening virtual ${bank.toUpperCase()}: ${vaNumber}`,
+                    minimumTransfer: amount,
+                    maximumTransfer: amount * 2
+                })
             };
 
-            // Save to database
-            await db.execute(
-                `INSERT INTO payments (
-                    order_number, customer_name, amount, payment_method, 
-                    status, reference_number, payment_date, branch_id, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [
-                    orderId,
-                    customerInfo.name || 'Pelanggan',
-                    amount,
-                    `Virtual Account - ${bankCode}`,
-                    'pending',
-                    vaNumber,
-                    new Date().toISOString().split('T')[0],
-                    customerInfo.branchId || 'BRANCH-001',
-                    timestamp
-                ]
-            );
+            // Store transaction
+            await this.storeTransaction(transaction);
 
-            return transaction;
+            return {
+                success: true,
+                provider: `${bank.toUpperCase()} Virtual Account`,
+                paymentId: transaction.payment_id,
+                orderId,
+                amount,
+                vaNumber,
+                bank: bank.toUpperCase(),
+                instructions: `Transfer ke rekening virtual ${bank.toUpperCase()}: ${vaNumber} sebelum ${expiresAt.toLocaleDateString('id-ID')} ${expiresAt.toLocaleTimeString('id-ID')}.`,
+                customer: {
+                    name: customerInfo.name || 'Pelanggan',
+                    phone: customerInfo.phone || '',
+                    email: customerInfo.email || ''
+                },
+                expiresAt: expiresAt.toISOString(),
+                expiresIn: Math.floor(this.vaTimeout / 1000)
+            };
         } catch (error) {
             throw new Error(`Virtual Account Transaction Error: ${error.message}`);
         }
     }
 
-    async createBankTransferTransaction(orderId, amount, customerInfo = {}) {
+    /**
+     * Create E-Wallet Payment
+     * OVO, DANA, LinkAja, etc.
+     */
+    async createEWalletTransaction(orderId, amount, walletType = 'OVO', customerInfo = {}) {
         try {
-            if (!orderId || !amount || amount <= 0) {
-                throw new Error('Invalid order ID or amount');
-            }
+            const referenceNo = `EWALLET-${orderId}-${Date.now()}`;
+            const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
-            const referenceNo = `BT-${orderId}-${Math.random().toString(36).substr(2, 9).toUpperCase()}`;
-            const timestamp = new Date().toISOString();
-            
             const transaction = {
+                payment_id: `PAY-${Date.now()}`,
+                order_id: orderId,
+                amount,
+                payment_method: walletType.toUpperCase(),
+                status: 'pending',
+                reference: referenceNo,
+                provider: walletType,
+                channel: 'e_wallet',
+                customer_name: customerInfo.name || 'Pelanggan',
+                customer_phone: customerInfo.phone || '',
+                customer_email: customerInfo.email || '',
+                expires_at: expiresAt.toISOString(),
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                metadata: JSON.stringify({
+                    walletType,
+                    deepLink: `https://wallet.${walletType.toLowerCase()}.co.id/pay/${referenceNo}`,
+                    checkoutUrl: `https://checkout.midtrans.com/${referenceNo}`
+                })
+            };
+
+            await this.storeTransaction(transaction);
+
+            return {
                 success: true,
-                provider: 'Bank Transfer',
+                provider: walletType,
+                paymentId: transaction.payment_id,
                 referenceNo,
                 orderId,
                 amount,
                 currency: 'IDR',
-                accountNumber: '1234567890',
-                bankName: 'BCA',
-                accountHolder: 'PT Laundry Enterprise Indonesia',
-                instructions: `Transfer ke rekening BCA atas nama PT Laundry Enterprise Indonesia dengan nomor referensi: ${referenceNo}`,
-                customerName: customerInfo.name || 'Pelanggan',
-                customerPhone: customerInfo.phone || '',
-                customerEmail: customerInfo.email || '',
-                expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-                createdAt: timestamp,
-                status: 'pending'
+                deepLink: `https://wallet.${walletType.toLowerCase()}.co.id/pay/${referenceNo}`,
+                checkoutUrl: `https://checkout.midtrans.com/${referenceNo}`,
+                customer: {
+                    name: customerInfo.name || 'Pelanggan',
+                    phone: customerInfo.phone || ''
+                },
+                expiresAt: expiresAt.toISOString()
+            };
+        } catch (error) {
+            throw new Error(`E-Wallet Transaction Error: ${error.message}`);
+        }
+    }
+
+    /**
+     * Manual Cash Payment (Over The Counter)
+     * Immediate confirmation payment
+     */
+    async createCashPayment(orderId, amount, receivedBy, customerInfo = {}) {
+        try {
+            const referenceNo = `CASH-${orderId}-${Date.now()}`;
+            const now = new Date();
+
+            const transaction = {
+                payment_id: `PAY-${Date.now()}`,
+                order_id: orderId,
+                amount,
+                payment_method: 'Cash',
+                status: 'completed',
+                reference: referenceNo,
+                provider: 'Manual/OTC',
+                channel: 'cash',
+                customer_name: customerInfo.name || 'Pelanggan',
+                customer_phone: customerInfo.phone || '',
+                customer_email: customerInfo.email || '',
+                paid_date: now.toISOString(),
+                created_at: now.toISOString(),
+                updated_at: now.toISOString(),
+                metadata: JSON.stringify({
+                    receivedBy,
+                    paymentLocation: 'Toko Laundry',
+                    method: 'Tunai'
+                })
             };
 
-            // Save to database
-            await db.execute(
-                `INSERT INTO payments (
-                    order_number, customer_name, amount, payment_method, 
-                    status, reference_number, payment_date, branch_id, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                [
-                    orderId,
-                    customerInfo.name || 'Pelanggan',
-                    amount,
-                    'Bank Transfer',
-                    'pending',
-                    referenceNo,
-                    new Date().toISOString().split('T')[0],
-                    customerInfo.branchId || 'BRANCH-001',
-                    timestamp
-                ]
-            );
+            await this.storeTransaction(transaction);
+
+            return {
+                success: true,
+                provider: 'Tunai',
+                paymentId: transaction.payment_id,
+                referenceNo,
+                orderId,
+                amount,
+                currency: 'IDR',
+                status: 'completed',
+                paidDate: now.toISOString(),
+                receivedBy,
+                customer: {
+                    name: customerInfo.name || 'Pelanggan',
+                    phone: customerInfo.phone || ''
+                }
+            };
+        } catch (error) {
+            throw new Error(`Cash Payment Error: ${error.message}`);
+        }
+    }
+
+    /**
+     * Store transaction to database
+     */
+    async storeTransaction(transaction) {
+        try {
+            const sql = `
+                INSERT INTO payments (
+                    payment_id, order_id, amount, payment_method, status,
+                    reference, provider, channel, customer_name, customer_phone,
+                    customer_email, expires_at, paid_date, created_at, updated_at, metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `;
+
+            await db.execute(sql, [
+                transaction.payment_id,
+                transaction.order_id,
+                transaction.amount,
+                transaction.payment_method,
+                transaction.status,
+                transaction.reference,
+                transaction.provider,
+                transaction.channel,
+                transaction.customer_name,
+                transaction.customer_phone,
+                transaction.customer_email,
+                transaction.expires_at || null,
+                transaction.paid_date || null,
+                transaction.created_at,
+                transaction.updated_at,
+                transaction.metadata
+            ]);
 
             return transaction;
         } catch (error) {
-            throw new Error(`Bank Transfer Transaction Error: ${error.message}`);
+            throw new Error(`Database Store Error: ${error.message}`);
         }
     }
 
-    async confirmPayment(referenceNo, paymentMethod = 'QRIS') {
+    /**
+     * Get payment details
+     */
+    async getPaymentDetails(paymentId) {
         try {
-            if (!referenceNo) {
-                throw new Error('Reference number is required');
+            const sql = `
+                SELECT * FROM payments WHERE payment_id = ? LIMIT 1
+            `;
+
+            const result = await db.execute(sql, [paymentId]);
+
+            if (result.rows.length === 0) {
+                return null;
             }
 
-            const result = await db.execute(
-                `UPDATE payments SET status = ?, payment_date = ? 
-                 WHERE reference_number = ?`,
-                ['paid', new Date().toISOString().split('T')[0], referenceNo]
-            );
-
-            if (result.changes === 0) {
-                throw new Error('Payment record not found');
+            const payment = result.rows[0];
+            if (payment.metadata) {
+                payment.metadata = JSON.parse(payment.metadata);
             }
 
-            // Update order status
-            const payment = await db.execute(
-                `SELECT order_number FROM payments WHERE reference_number = ?`,
-                [referenceNo]
-            );
-
-            if (payment.rows.length > 0) {
-                await db.execute(
-                    `UPDATE orders SET status = ? WHERE order_number = ?`,
-                    ['paid', payment.rows[0].order_number]
-                );
-            }
-
-            return {
-                success: true,
-                message: 'Pembayaran berhasil dikonfirmasi',
-                referenceNo
-            };
+            return payment;
         } catch (error) {
-            throw new Error(`Confirm Payment Error: ${error.message}`);
+            throw new Error(`Get Payment Error: ${error.message}`);
         }
     }
 
+    /**
+     * Get payments by order ID
+     */
+    async getPaymentsByOrderId(orderId) {
+        try {
+            const sql = `
+                SELECT * FROM payments WHERE order_id = ? ORDER BY created_at DESC
+            `;
+
+            const result = await db.execute(sql, [orderId]);
+
+            return result.rows.map(payment => {
+                if (payment.metadata) {
+                    payment.metadata = JSON.parse(payment.metadata);
+                }
+                return payment;
+            });
+        } catch (error) {
+            throw new Error(`Get Payments Error: ${error.message}`);
+        }
+    }
+
+    /**
+     * Update payment status
+     */
+    async updatePaymentStatus(paymentId, status, paidDate = null) {
+        try {
+            const now = new Date().toISOString();
+            const sql = `
+                UPDATE payments 
+                SET status = ?, paid_date = ?, updated_at = ?
+                WHERE payment_id = ?
+            `;
+
+            await db.execute(sql, [status, paidDate || null, now, paymentId]);
+
+            return await this.getPaymentDetails(paymentId);
+        } catch (error) {
+            throw new Error(`Update Payment Status Error: ${error.message}`);
+        }
+    }
+
+    /**
+     * Verify webhook signature from payment gateway
+     */
     verifyWebhookSignature(payload, signature) {
-        try {
-            if (!signature) return true;
-            
-            const expectedSig = crypto.createHmac('sha256', this.serverKey)
-                .update(JSON.stringify(payload))
-                .digest('hex');
-            
-            return expectedSig === signature;
-        } catch (error) {
-            console.error('Webhook verification error:', error);
-            return false;
-        }
+        if (!signature) return true;
+
+        const expectedSig = crypto
+            .createHmac('sha256', this.serverKey)
+            .update(JSON.stringify(payload))
+            .digest('hex');
+
+        return expectedSig === signature;
     }
 
-    async processWebhookPayment(webhookData) {
-        try {
-            if (!webhookData.referenceNo || !webhookData.transactionStatus) {
-                throw new Error('Invalid webhook data');
-            }
-
-            let paymentStatus = 'pending';
-            if (webhookData.transactionStatus === 'settlement' || webhookData.transactionStatus === 'paid') {
-                paymentStatus = 'paid';
-            } else if (webhookData.transactionStatus === 'failed' || webhookData.transactionStatus === 'deny') {
-                paymentStatus = 'failed';
-            } else if (webhookData.transactionStatus === 'expired') {
-                paymentStatus = 'expired';
-            }
-
-            const result = await db.execute(
-                `UPDATE payments SET status = ? WHERE reference_number = ?`,
-                [paymentStatus, webhookData.referenceNo]
-            );
-
-            if (result.changes === 0) {
-                throw new Error('Payment record not found for webhook');
-            }
-
-            return {
-                success: true,
-                message: `Webhook processed: payment status updated to ${paymentStatus}`,
-                status: paymentStatus
-            };
-        } catch (error) {
-            throw new Error(`Webhook Processing Error: ${error.message}`);
-        }
+    /**
+     * Generate signature for transaction
+     */
+    generateSignature(data) {
+        return crypto
+            .createHmac('sha256', this.serverKey)
+            .update(data)
+            .digest('hex');
     }
 
-    async getPaymentHistory(orderId, branchId = null) {
-        try {
-            let query = `SELECT * FROM payments WHERE order_number = ?`;
-            let params = [orderId];
-
-            if (branchId) {
-                query += ` AND branch_id = ?`;
-                params.push(branchId);
-            }
-
-            query += ` ORDER BY payment_date DESC LIMIT 10`;
-
-            const result = await db.execute(query, params);
-            return result.rows || [];
-        } catch (error) {
-            throw new Error(`Get Payment History Error: ${error.message}`);
-        }
-    }
-
-    async getPaymentStats(branchId = null, startDate = null, endDate = null) {
-        try {
-            let query = `SELECT 
-                        payment_method,
-                        status,
-                        COUNT(*) as count,
-                        SUM(amount) as total
-                    FROM payments
-                    WHERE 1=1`;
-            let params = [];
-
-            if (branchId) {
-                query += ` AND branch_id = ?`;
-                params.push(branchId);
-            }
-
-            if (startDate) {
-                query += ` AND payment_date >= ?`;
-                params.push(startDate);
-            }
-
-            if (endDate) {
-                query += ` AND payment_date <= ?`;
-                params.push(endDate);
-            }
-
-            query += ` GROUP BY payment_method, status`;
-
-            const result = await db.execute(query, params);
-            return result.rows || [];
-        } catch (error) {
-            throw new Error(`Get Payment Stats Error: ${error.message}`);
-        }
-    }
-
-    getBankInstructions(bankCode, vaNumber) {
-        const instructions = {
-            'BCA': `1. Masuk ke BCA Mobile atau ATM BCA
-2. Pilih Transfer → Ke Rekening BCA
-3. Masukkan nomor VA: ${vaNumber}
-4. Jumlah akan tertampil otomatis
-5. Selesaikan transaksi`,
-            'BNI': `1. Buka BNI Mobile Banking
-2. Pilih Pembayaran → Virtual Account
-3. Masukkan nomor VA: ${vaNumber}
-4. Konfirmasi pembayaran
-5. Transaksi selesai`,
-            'MANDIRI': `1. Akses Mandiri Online atau ATM Mandiri
-2. Pilih Transfer → Dari Bank Lain
-3. Masukkan nomor VA: ${vaNumber}
-4. Verifikasi data
-5. Selesaikan transaksi`,
-            'BTN': `1. Login BTN Mobile
-2. Pilih Pembayaran/Transfer
-3. Masukkan nomor VA: ${vaNumber}
-4. Review detail
-5. Konfirmasi dan selesai`
+    /**
+     * Get VA prefix by bank
+     */
+    getVAPrefix(bank) {
+        const prefixes = {
+            bca: '8800',
+            mandiri: '8910',
+            bni: '8888',
+            cimb: '8800',
+            bri: '8880'
         };
-        
-        return instructions[bankCode] || instructions['BCA'];
+
+        return prefixes[bank.toLowerCase()] || '8800';
     }
 
-    async refundPayment(referenceNo, amount, reason = '') {
+    /**
+     * Calculate payment summary for period
+     */
+    async getPaymentSummary(startDate, endDate) {
         try {
-            if (!referenceNo || !amount || amount <= 0) {
-                throw new Error('Invalid reference number or amount');
+            const sql = `
+                SELECT 
+                    COUNT(*) as total_transactions,
+                    SUM(amount) as total_amount,
+                    payment_method,
+                    status,
+                    COUNT(CASE WHEN status = 'completed' THEN 1 END) as successful_payments
+                FROM payments
+                WHERE created_at >= ? AND created_at <= ?
+                GROUP BY payment_method, status
+            `;
+
+            const result = await db.execute(sql, [startDate, endDate]);
+
+            return result.rows;
+        } catch (error) {
+            throw new Error(`Get Payment Summary Error: ${error.message}`);
+        }
+    }
+
+    /**
+     * Handle payment webhook from gateway
+     */
+    async handleWebhook(payload, signature) {
+        try {
+            // Verify signature
+            const isValid = this.verifyWebhookSignature(payload, signature);
+            if (!isValid) {
+                throw new Error('Invalid webhook signature');
             }
 
-            const refundId = `REF-${Date.now()}`;
-            const timestamp = new Date().toISOString();
+            const { reference, status, amount } = payload;
 
-            // Get original payment
-            const payment = await db.execute(
-                `SELECT * FROM payments WHERE reference_number = ?`,
-                [referenceNo]
-            );
+            // Find payment by reference
+            const sql = `SELECT * FROM payments WHERE reference = ? LIMIT 1`;
+            const result = await db.execute(sql, [reference]);
 
-            if (payment.rows.length === 0) {
+            if (result.rows.length === 0) {
                 throw new Error('Payment not found');
             }
 
-            // Create refund record
-            await db.execute(
-                `INSERT INTO refunds (
-                    payment_id, reference_number, amount, reason, status, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?)`,
-                [
-                    payment.rows[0].id,
-                    refundId,
-                    amount,
-                    reason || 'Pengembalian dana',
-                    'processing',
-                    timestamp
-                ]
-            );
+            const payment = result.rows[0];
 
-            return {
-                success: true,
-                refundId,
-                originalPayment: referenceNo,
-                amount,
-                message: 'Refund request berhasil dibuat'
-            };
+            // Update payment status
+            const newStatus = status === 'success' ? 'completed' : status === 'failed' ? 'failed' : 'pending';
+            return await this.updatePaymentStatus(payment.payment_id, newStatus, new Date().toISOString());
         } catch (error) {
-            throw new Error(`Refund Payment Error: ${error.message}`);
+            throw new Error(`Webhook Handler Error: ${error.message}`);
+        }
+    }
+
+    /**
+     * Check and expire pending payments
+     */
+    async expirePendingPayments() {
+        try {
+            const now = new Date().toISOString();
+            const sql = `
+                UPDATE payments 
+                SET status = 'expired', updated_at = ?
+                WHERE status = 'pending' AND expires_at < ? AND expires_at IS NOT NULL
+            `;
+
+            await db.execute(sql, [now, now]);
+
+            return { message: 'Expired payments updated' };
+        } catch (error) {
+            throw new Error(`Expire Payments Error: ${error.message}`);
         }
     }
 }
