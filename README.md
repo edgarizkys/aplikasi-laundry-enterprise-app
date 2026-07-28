@@ -1,464 +1,363 @@
 # Aplikasi Laundry Enterprise
 
-Aplikasi manajemen laundry enterprise berbasis web dengan fitur order management, customer loyalty program, payment processing, dan analytics dashboard.
+Platform manajemen laundry terintegrasi dengan fitur CRUD pesanan, manajemen pelanggan, tracking real-time, dan integrasi pembayaran.
 
-## Stack Teknologi
-
-- **Backend**: Express.js + Turso SQLite
-- **Frontend**: HTML5 + Tailwind CSS + Vanilla JavaScript
-- **Database**: Turso SQLite (edge database)
-- **Authentication**: JWT
-- **Payment**: QRIS, Cash, Transfer Bank
-- **Styling**: Tailwind CSS (#6366F1 → #06B6D4)
-
-## Fitur Utama
-
-### 1. Order Management
-- Create, Read, Update, Delete pesanan
-- Real-time order tracking
-- Status management (pending, processing, ready, completed)
-- Pickup & delivery scheduling
-- Order notes & special instructions
-
-### 2. Customer Management
-- Database pelanggan lengkap
-- Loyalty points system
-- Member tiers (Bronze, Silver, Gold, Platinum)
-- Purchase history & analytics
-- Contact management
-
-### 3. Staff Management
-- CRUD staff dengan roles (Admin, Operator, Quality Control, Pickup/Delivery)
-- Salary tracking
-- Schedule management
-- Performance metrics
-- Status tracking (active, inactive, leave)
-
-### 4. Service Catalog
-- Jenis layanan (Regular, Express, Premium)
-- Pricing per kg
-- Turnaround time management
-- Service descriptions & features
-
-### 5. Payment Processing
-- Multiple payment methods (QRIS, Cash, Bank Transfer)
-- Payment tracking & reconciliation
-- Invoice generation
-- Payment history
-
-### 6. Inventory Management
-- Chemical & supplies tracking
-- Quantity monitoring
-- Reorder level alerts
-- Unit cost management
-- Category organization
-
-### 7. Financial Dashboard
-- Revenue reports
-- Expense tracking
-- Profit margin analysis
-- Payment method analytics
-- Monthly/yearly comparisons
-
-### 8. Analytics & Reports
-- Order volume analytics
-- Customer analytics
-- Revenue trends
-- Service popularity
-- Loyalty program analytics
-
-## Setup & Installation
+## 🚀 Quick Start
 
 ### Prerequisites
 - Node.js 18+
-- npm atau yarn
-- Turso CLI (optional untuk development)
+- SQLite3
+- npm/yarn
 
 ### Installation
 
 ```bash
-# Clone repository
-git clone <repository-url>
+git clone <repo-url>
 cd laundry-enterprise
-
-# Install dependencies
 npm install
+```
 
-# Setup environment variables
-cp .env.example .env
+### Environment Setup
 
-# Edit .env dengan konfigurasi Anda
-# DATABASE_URL=libsql://your-db.turso.io
-# DATABASE_AUTH_TOKEN=your-token
-# JWT_SECRET=your-secret-key
-# PORT=3000
+Buat file `.env`:
 
-# Run migrations
-npm run migrate
+```env
+# Database
+DATABASE_URL=file:./local.db
 
-# Seed data (optional)
-npm run seed
+# Server
+PORT=5000
+NODE_ENV=development
 
-# Start development server
+# JWT
+JWT_SECRET=your_super_secret_key_change_this_in_production
+
+# Payment (Optional)
+QRIS_API_KEY=your_qris_key
+BANK_API_KEY=your_bank_key
+
+# Notification (Optional)
+WHATSAPP_API_KEY=your_whatsapp_key
+```
+
+### Running the App
+
+Development:
+```bash
 npm run dev
+```
 
-# Production build
+Production:
+```bash
 npm run build
 npm start
 ```
 
-## Project Structure
+## 📊 Database Schema
+
+### Tables
+
+**orders**
+- order_number (TEXT, unique)
+- customer_id (TEXT)
+- customer_name (TEXT)
+- phone (TEXT)
+- items_description (TEXT)
+- total_items (INTEGER)
+- weight_kg (REAL)
+- service_type (TEXT)
+- total_price (REAL)
+- status (TEXT): pending, processing, ready, completed, cancelled
+- pickup_date (DATE)
+- delivery_date (DATE)
+- payment_status (TEXT): unpaid, paid, partially_paid
+- notes (TEXT)
+- created_at (DATETIME)
+- updated_at (DATETIME)
+
+**customers**
+- customer_id (TEXT, unique)
+- name (TEXT)
+- phone (TEXT)
+- email (TEXT)
+- address (TEXT)
+- city (TEXT)
+- loyalty_points (INTEGER)
+- total_orders (INTEGER)
+- registration_date (DATE)
+- created_at (DATETIME)
+- updated_at (DATETIME)
+
+**employees**
+- employee_id (TEXT, unique)
+- name (TEXT)
+- position (TEXT)
+- phone (TEXT)
+- email (TEXT)
+- hire_date (DATE)
+- salary (REAL)
+- status (TEXT): active, inactive, on_leave
+- created_at (DATETIME)
+- updated_at (DATETIME)
+
+**branches**
+- branch_id (TEXT, unique)
+- name (TEXT)
+- address (TEXT)
+- city (TEXT)
+- phone (TEXT)
+- manager_name (TEXT)
+- operating_hours (TEXT)
+- created_at (DATETIME)
+- updated_at (DATETIME)
+
+**services**
+- service_id (TEXT, unique)
+- name (TEXT)
+- description (TEXT)
+- price_per_kg (REAL)
+- turnaround_days (INTEGER)
+- status (TEXT): active, inactive
+- created_at (DATETIME)
+- updated_at (DATETIME)
+
+**payments**
+- payment_id (TEXT, unique)
+- order_id (TEXT)
+- customer_name (TEXT)
+- amount (REAL)
+- payment_method (TEXT): QRIS, Transfer_Bank, Cash
+- payment_date (DATE)
+- status (TEXT): pending, completed, failed
+- created_at (DATETIME)
+- updated_at (DATETIME)
+
+## 🎨 Features
+
+### Core Management
+- ✅ CRUD Pesanan dengan status real-time
+- ✅ Manajemen Pelanggan & Riwayat Pesanan
+- ✅ Manajemen Karyawan & Jadwal Kerja
+- ✅ Multi-cabang dengan operasional terpisah
+- ✅ Manajemen Layanan & Harga Dinamis
+
+### Advanced Features
+- ✅ Tracking Status Pesanan Real-time
+- ✅ Integrasi Pembayaran QRIS & Bank Transfer
+- ✅ Program Loyalitas Poin Pelanggan
+- ✅ Pickup & Delivery Management
+- ✅ Invoice & Receipt Generation
+- ✅ SMS/Notifikasi Status Otomatis
+
+### Analytics & Reporting
+- ✅ Dashboard Statistik Penjualan
+- ✅ Laporan Transaksi Pembayaran
+- ✅ Analisis Kinerja Karyawan
+- ✅ Metrik Kepuasan Pelanggan
+- ✅ Export Data ke Excel/PDF
+
+### Multi-Tenant Support
+- ✅ Isolasi Data Per-Cabang
+- ✅ Manajemen Pengguna Granular
+- ✅ Audit Trail Lengkap
+
+## 🛠️ Technology Stack
+
+### Backend
+- **Runtime**: Node.js
+- **Framework**: Express.js
+- **Database**: SQLite + Turso
+- **ORM**: Drizzle ORM
+- **Validation**: Zod
+- **Auth**: JWT
+- **API Docs**: Swagger/OpenAPI
+
+### Frontend
+- **Framework**: React 18+
+- **Styling**: Tailwind CSS
+- **UI Components**: Headless UI / Radix UI
+- **State Management**: TanStack Query + Zustand
+- **Form**: React Hook Form
+- **Tables**: TanStack Table
+- **Charts**: Recharts
+
+### DevOps
+- **Containerization**: Docker
+- **CI/CD**: GitHub Actions
+- **Deployment**: Vercel/Railway
+
+## 📁 Project Structure
 
 ```
 laundry-enterprise/
 ├── server/
-│   ├── config/              # Konfigurasi database & environment
-│   ├── controllers/         # Request handlers
-│   ├── routes/              # API routes
-│   ├── middleware/          # Auth, validation, error handling
-│   ├── models/              # Database schema & queries
-│   ├── services/            # Business logic
-│   ├── utils/               # Helper functions
-│   └── server.js            # Entry point
-├── public/
-│   ├── css/                 # Tailwind & custom styles
-│   ├── js/                  # Frontend logic
-│   ├── assets/              # Images & icons
-│   └── index.html           # Main page
-├── views/                   # HTML templates
-│   ├── dashboard.html
-│   ├── orders.html
-│   ├── customers.html
-│   ├── staff.html
-│   ├── services.html
-│   ├── payments.html
-│   └── inventory.html
-├── migrations/              # Database migrations
-├── seeds/                   # Seed data
+│   ├── src/
+│   │   ├── db/
+│   │   │   ├── schema.ts
+│   │   │   └── migrations/
+│   │   ├── routes/
+│   │   │   ├── orders.ts
+│   │   │   ├── customers.ts
+│   │   │   ├── employees.ts
+│   │   │   ├── branches.ts
+│   │   │   ├── services.ts
+│   │   │   ├── payments.ts
+│   │   │   └── analytics.ts
+│   │   ├── controllers/
+│   │   ├── services/
+│   │   ├── middleware/
+│   │   ├── utils/
+│   │   └── index.ts
+│   └── package.json
+├── client/
+│   ├── src/
+│   │   ├── components/
+│   │   │   ├── Sidebar.tsx
+│   │   │   ├── Navbar.tsx
+│   │   │   └── common/
+│   │   ├── pages/
+│   │   │   ├── Dashboard.tsx
+│   │   │   ├── Orders/
+│   │   │   ├── Customers/
+│   │   │   ├── Employees/
+│   │   │   ├── Branches/
+│   │   │   ├── Services/
+│   │   │   ├── Payments/
+│   │   │   └── Analytics/
+│   │   ├── hooks/
+│   │   ├── services/api.ts
+│   │   ├── store/
+│   │   ├── types/
+│   │   └── App.tsx
+│   └── package.json
+├── docker-compose.yml
 ├── .env.example
-├── package.json
 └── README.md
 ```
 
-## API Endpoints
+## 🔐 API Endpoints
 
 ### Orders
-- `GET /api/orders` - Daftar pesanan (dengan pagination)
+- `GET /api/orders` - List pesanan dengan filter & pagination
 - `GET /api/orders/:id` - Detail pesanan
-- `POST /api/orders` - Buat pesanan
+- `POST /api/orders` - Buat pesanan baru
 - `PUT /api/orders/:id` - Update pesanan
 - `DELETE /api/orders/:id` - Hapus pesanan
-- `GET /api/orders/status/:status` - Filter by status
+- `PATCH /api/orders/:id/status` - Update status pesanan
 
 ### Customers
-- `GET /api/customers` - Daftar pelanggan
+- `GET /api/customers` - List pelanggan
 - `GET /api/customers/:id` - Detail pelanggan
 - `POST /api/customers` - Tambah pelanggan
 - `PUT /api/customers/:id` - Update pelanggan
-- `DELETE /api/customers/:id` - Hapus pelanggan
-- `POST /api/customers/:id/points` - Update loyalty points
+- `GET /api/customers/:id/orders` - Riwayat pesanan
 
-### Staff
-- `GET /api/staff` - Daftar staff
-- `GET /api/staff/:id` - Detail staff
-- `POST /api/staff` - Tambah staff
-- `PUT /api/staff/:id` - Update staff
-- `DELETE /api/staff/:id` - Hapus staff
-
-### Services
-- `GET /api/services` - Daftar layanan
-- `GET /api/services/:id` - Detail layanan
-- `POST /api/services` - Tambah layanan
-- `PUT /api/services/:id` - Update layanan
-- `DELETE /api/services/:id` - Hapus layanan
+### Employees
+- `GET /api/employees` - List karyawan
+- `POST /api/employees` - Tambah karyawan
+- `PUT /api/employees/:id` - Update karyawan
+- `DELETE /api/employees/:id` - Hapus karyawan
 
 ### Payments
-- `GET /api/payments` - Daftar pembayaran
+- `GET /api/payments` - List pembayaran
 - `POST /api/payments` - Buat pembayaran
-- `PUT /api/payments/:id` - Update pembayaran
-- `GET /api/payments/order/:order_id` - Pembayaran by order
+- `GET /api/payments/:id` - Detail pembayaran
+- `PATCH /api/payments/:id/confirm` - Konfirmasi pembayaran
 
-### Inventory
-- `GET /api/inventory` - Daftar inventori
-- `POST /api/inventory` - Tambah item
-- `PUT /api/inventory/:id` - Update item
-- `DELETE /api/inventory/:id` - Hapus item
-- `POST /api/inventory/:id/adjust` - Adjust quantity
+### Analytics
+- `GET /api/analytics/dashboard` - Dashboard stats
+- `GET /api/analytics/revenue` - Revenue report
+- `GET /api/analytics/orders-trend` - Orders trend
+- `GET /api/analytics/top-customers` - Top customers
 
-### Dashboard
-- `GET /api/dashboard/summary` - Summary metrics
-- `GET /api/dashboard/revenue` - Revenue data
-- `GET /api/dashboard/orders-status` - Orders by status
-- `GET /api/dashboard/top-customers` - Top customers
-- `GET /api/dashboard/top-services` - Top services
-
-## Authentication
-
-Sistem menggunakan JWT token untuk API endpoints.
-
-```javascript
-// Login
-POST /api/auth/login
-{
-  "username": "admin",
-  "password": "password"
-}
-
-// Response
-{
-  "token": "eyJhbGciOiJIUzI1NiIs...",
-  "user": { "id": 1, "username": "admin", "role": "admin" }
-}
-
-// Usage
-Authorization: Bearer <token>
-```
-
-## Database Schema
-
-### orders
-```sql
-CREATE TABLE orders (
-  id INTEGER PRIMARY KEY,
-  order_number TEXT UNIQUE,
-  customer_id TEXT,
-  customer_name TEXT,
-  phone TEXT,
-  items_count INTEGER,
-  weight_kg REAL,
-  service_type TEXT,
-  total_price REAL,
-  status TEXT,
-  pickup_date TEXT,
-  delivery_date TEXT,
-  assigned_staff TEXT,
-  notes TEXT,
-  created_at TEXT,
-  updated_at TEXT
-)
-```
-
-### customers
-```sql
-CREATE TABLE customers (
-  id INTEGER PRIMARY KEY,
-  customer_id TEXT UNIQUE,
-  name TEXT,
-  phone TEXT,
-  email TEXT,
-  address TEXT,
-  loyalty_points INTEGER,
-  total_spent REAL,
-  member_tier TEXT,
-  joined_date TEXT,
-  created_at TEXT,
-  updated_at TEXT
-)
-```
-
-### staff
-```sql
-CREATE TABLE staff (
-  id INTEGER PRIMARY KEY,
-  staff_id TEXT UNIQUE,
-  name TEXT,
-  position TEXT,
-  phone TEXT,
-  email TEXT,
-  salary REAL,
-  hire_date TEXT,
-  status TEXT,
-  created_at TEXT,
-  updated_at TEXT
-)
-```
-
-### services
-```sql
-CREATE TABLE services (
-  id INTEGER PRIMARY KEY,
-  service_id TEXT UNIQUE,
-  name TEXT,
-  price_per_kg REAL,
-  turnaround_days INTEGER,
-  description TEXT,
-  active BOOLEAN,
-  created_at TEXT,
-  updated_at TEXT
-)
-```
-
-### payments
-```sql
-CREATE TABLE payments (
-  id INTEGER PRIMARY KEY,
-  payment_id TEXT UNIQUE,
-  order_id TEXT,
-  amount REAL,
-  payment_method TEXT,
-  status TEXT,
-  paid_date TEXT,
-  reference TEXT,
-  created_at TEXT,
-  updated_at TEXT
-)
-```
-
-### inventory
-```sql
-CREATE TABLE inventory (
-  id INTEGER PRIMARY KEY,
-  item_id TEXT UNIQUE,
-  item_name TEXT,
-  category TEXT,
-  quantity REAL,
-  unit TEXT,
-  reorder_level REAL,
-  unit_cost REAL,
-  created_at TEXT,
-  updated_at TEXT
-)
-```
-
-## Sample Data
-
-Aplikasi dilengkapi dengan sample data:
-- 2 pesanan
-- 2 pelanggan
-- 2 staff
-- 2 layanan
-- 2 pembayaran
-- 2 item inventori
-
-Jalankan `npm run seed` untuk mengisi sample data.
-
-## Color Scheme
-
-- Primary Gradient: #6366F1 (Indigo) → #06B6D4 (Cyan)
-- Primary: #6366F1
-- Secondary: #06B6D4
-- Success: #10B981
-- Warning: #F59E0B
-- Error: #EF4444
-
-## Error Handling
-
-Aplikasi mengimplementasikan error handling yang robust:
-
-```javascript
-{
-  "success": false,
-  "error": "Error message",
-  "code": "ERROR_CODE",
-  "data": null
-}
-```
-
-## Pagination
-
-Semua list endpoint mendukung pagination:
+## 🔄 Data Flow
 
 ```
-GET /api/orders?page=1&limit=10&sort=created_at&order=desc
-
-{
-  "success": true,
-  "data": [...],
-  "pagination": {
-    "page": 1,
-    "limit": 10,
-    "total": 100,
-    "pages": 10
-  }
-}
+Client Request
+    ↓
+Express Middleware (Auth, Validation)
+    ↓
+Route Handler
+    ↓
+Service Layer (Business Logic)
+    ↓
+Database Query (Drizzle ORM)
+    ↓
+SQLite/Turso
+    ↓
+Response Format (JSON)
+    ↓
+Client Response
 ```
 
-## Security
-
-- Input validation & sanitization
-- SQL injection prevention
-- XSS protection
-- CSRF tokens
-- Rate limiting
-- JWT authentication
-- Role-based access control (RBAC)
-- Secure password hashing
-
-## Development
+## 🧪 Testing
 
 ```bash
-# Run with nodemon
-npm run dev
-
-# Run tests
+# Unit tests
 npm run test
 
-# Lint code
-npm run lint
+# Integration tests
+npm run test:integration
 
-# Format code
-npm run format
+# Coverage
+npm run test:coverage
 ```
 
-## Production
+## 📝 Seeding Database
 
 ```bash
-# Build
-npm run build
-
-# Start
-npm start
-
-# Environment
-NODE_ENV=production
-```
-
-## Troubleshooting
-
-### Database Connection Error
-- Pastikan Turso CLI terinstall
-- Cek DATABASE_URL dan DATABASE_AUTH_TOKEN di .env
-- Jalankan `npm run migrate`
-
-### Port Already in Use
-```bash
-# Gunakan port berbeda
-PORT=3001 npm run dev
-```
-
-### Migration Errors
-```bash
-# Reset database (development only)
-npm run migrate:reset
 npm run seed
 ```
 
-## Contributing
+Ini akan mengisi database dengan data sample dari file configuration.
+
+## 🚀 Deployment
+
+### Vercel (Frontend)
+```bash
+vercel deploy
+```
+
+### Railway/Render (Backend)
+```bash
+# Connect repository
+# Set environment variables
+# Deploy
+```
+
+### Docker
+```bash
+docker-compose up -d
+```
+
+## 📞 Support
+
+Untuk pertanyaan atau issue, hubungi:
+- Email: support@laundryenterprise.com
+- WhatsApp: +62-XXX-XXXX-XXXX
+
+## 📄 License
+
+MIT License - Lihat file LICENSE untuk detail.
+
+## 👥 Contributing
 
 1. Fork repository
-2. Buat feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit changes (`git commit -m 'Add AmazingFeature'`)
+2. Buat branch feature (`git checkout -b feature/AmazingFeature`)
+3. Commit changes (`git commit -m 'Add some AmazingFeature'`)
 4. Push ke branch (`git push origin feature/AmazingFeature`)
-5. Open Pull Request
+5. Buat Pull Request
 
-## License
+## 🎯 Roadmap
 
-MIT License - lihat LICENSE file
-
-## Support
-
-Untuk support atau pertanyaan, silakan buat issue di repository.
-
-## Changelog
-
-### v1.0.0 (2026-07-28)
-- Initial release
-- Core CRUD operations
-- Payment processing
-- Loyalty program
-- Analytics dashboard
-- Multi-entity support
+- [ ] Mobile app (React Native)
+- [ ] Advanced scheduling system
+- [ ] AI-powered demand forecasting
+- [ ] Integasi lebih banyak payment gateway
+- [ ] Multi-bahasa support
+- [ ] Voice order system
 
 ---
 
-**Aplikasi Laundry Enterprise** - Built with ❤️ for Indonesian Laundry Businesses
+**Last Updated**: 2026-07-28
+**Version**: 1.0.0
