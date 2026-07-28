@@ -16,22 +16,16 @@
       "dest": "src/app.js"
     },
     {
-      "src": "/static/(.*)",
-      "dest": "/public/static/$1"
-    },
-    {
       "src": "/(.*)",
-      "dest": "/public/index.html"
+      "dest": "/public/$1"
     }
   ],
   "env": {
-    "PORT": "3000",
+    "PORT": "@port",
+    "TURSO_DATABASE_URL": "@turso_database_url",
+    "TURSO_AUTH_TOKEN": "@turso_auth_token",
+    "JWT_SECRET": "@jwt_secret",
+    "PAYMENT_GATEWAY_KEY": "@payment_gateway_key",
     "NODE_ENV": "production"
-  },
-  "functions": {
-    "src/app.js": {
-      "memory": 1024,
-      "maxDuration": 30
-    }
   }
 }
