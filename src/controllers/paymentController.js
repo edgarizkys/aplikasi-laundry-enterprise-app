@@ -1,376 +1,476 @@
 const express = require('express');
-const router = express.Router();
 const db = require('../config/database');
 const paymentService = require('../services/paymentService');
-const { validateRequest, asyncHandler } = require('../middleware/validators');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { validatePayment, handleErrors } = require('../middleware/validation');
+const { authenticateToken, authorizeBranch } = require('../middleware/auth');
 
-// Get all payments with pagination
-router.get('/', requireAuth, asyncHandler(async (req, res) => {
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const offset = (page - 1) * limit;
-    const status = req.query.status || null;
-    const paymentMethod = req.query.paymentMethod || null;
-    const tenantId = req.user.tenantId;
+class PaymentController {
+    async createPayment(req, res) {
+        try {
+            const { orderId, amount, paymentMethod, customerInfo } = req.body;
+            const branchId = req.user.branchId;
 
-    let query = 'SELECT * FROM payments WHERE tenant_id = ?';
-    const params = [tenantId];
+            if (!orderId || !amount || !paymentMethod) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Parameter tidak lengkap: orderId, amount, paymentMethod diperlukan'
+                });
+            }
 
-    if (status) {
-        query += ' AND status = ?';
-        params.push(status);
-    }
+            const order = await db.query(
+                'SELECT * FROM orders WHERE order_id = ? AND branch_id = ?',
+                [orderId, branchId]
+            );
 
-    if (paymentMethod) {
-        query += ' AND payment_method = ?';
-        params.push(paymentMethod);
-    }
+            if (!order.rows || order.rows.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Pesanan tidak ditemukan'
+                });
+            }
 
-    const countQuery = query.replace('SELECT *', 'SELECT COUNT(*) as total');
-    const countResult = await db.execute(countQuery, params);
-    const total = countResult.rows[0]?.total || 0;
+            let paymentResult;
+            const paymentId = `PAY-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    query += ' ORDER BY payment_date DESC LIMIT ? OFFSET ?';
-    params.push(limit, offset);
+            if (paymentMethod === 'QRIS') {
+                paymentResult = await paymentService.createQrisTransaction(orderId, amount, customerInfo);
+            } else if (paymentMethod === 'Bank Transfer') {
+                paymentResult = await paymentService.createVirtualAccountTransaction(orderId, amount);
+            } else if (paymentMethod === 'Cash') {
+                paymentResult = {
+                    success: true,
+                    provider: 'Cash',
+                    orderId,
+                    amount,
+                    currency: 'IDR'
+                };
+            } else {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Metode pembayaran tidak didukung'
+                });
+            }
 
-    const result = await db.execute(query, params);
-    const payments = result.rows || [];
+            await db.execute(
+                `INSERT INTO payments (payment_id, order_id, amount, payment_method, status, payment_date, reference_id, branch_id, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [paymentId, orderId, amount, paymentMethod, 'pending', new Date().toISOString().split('T')[0], paymentResult.referenceNo || paymentResult.vaNumber || '', branchId, new Date().toISOString()]
+            );
 
-    res.json({
-        success: true,
-        data: payments,
-        pagination: {
-            page,
-            limit,
-            total,
-            pages: Math.ceil(total / limit)
+            await db.execute(
+                'UPDATE orders SET status = ? WHERE order_id = ?',
+                ['payment_pending', orderId]
+            );
+
+            return res.status(201).json({
+                success: true,
+                message: 'Pembayaran berhasil dibuat',
+                data: {
+                    paymentId,
+                    ...paymentResult,
+                    expiresAt: paymentResult.expiresAt || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+                }
+            });
+        } catch (error) {
+            console.error('Error creating payment:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Gagal membuat pembayaran',
+                error: error.message
+            });
         }
-    });
-}));
-
-// Get payment by ID
-router.get('/:paymentId', requireAuth, asyncHandler(async (req, res) => {
-    const { paymentId } = req.params;
-    const tenantId = req.user.tenantId;
-
-    const result = await db.execute(
-        'SELECT * FROM payments WHERE payment_id = ? AND tenant_id = ?',
-        [paymentId, tenantId]
-    );
-
-    const payment = result.rows?.[0];
-
-    if (!payment) {
-        return res.status(404).json({
-            success: false,
-            message: 'Pembayaran tidak ditemukan'
-        });
     }
 
-    res.json({
-        success: true,
-        data: payment
-    });
-}));
+    async getPaymentById(req, res) {
+        try {
+            const { paymentId } = req.params;
+            const branchId = req.user.branchId;
 
-// Create QRIS payment
-router.post('/qris/create', requireAuth, validateRequest({
-    orderId: 'required|string',
-    amount: 'required|number|positive',
-    customerName: 'string'
-}), asyncHandler(async (req, res) => {
-    const { orderId, amount, customerName } = req.body;
-    const tenantId = req.user.tenantId;
+            const result = await db.query(
+                `SELECT p.*, o.order_id, o.customer_name, o.total_price 
+                 FROM payments p
+                 LEFT JOIN orders o ON p.order_id = o.order_id
+                 WHERE p.payment_id = ? AND p.branch_id = ?`,
+                [paymentId, branchId]
+            );
 
-    // Check order exists
-    const orderResult = await db.execute(
-        'SELECT * FROM orders WHERE id = ? AND tenant_id = ?',
-        [orderId, tenantId]
-    );
+            if (!result.rows || result.rows.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Pembayaran tidak ditemukan'
+                });
+            }
 
-    if (!orderResult.rows?.[0]) {
-        return res.status(404).json({
-            success: false,
-            message: 'Pesanan tidak ditemukan'
-        });
-    }
-
-    const order = orderResult.rows[0];
-
-    // Create QRIS transaction
-    const qrisTransaction = await paymentService.createQrisTransaction(
-        order.order_number,
-        amount,
-        { name: customerName || order.customer_name }
-    );
-
-    const paymentId = `PAY-${Date.now()}`;
-    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-
-    await db.execute(
-        `INSERT INTO payments (
-            payment_id, tenant_id, order_id, customer_name, amount, 
-            payment_method, reference_no, status, qr_code_url, 
-            expires_at, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-            paymentId,
-            tenantId,
-            orderId,
-            customerName || order.customer_name,
-            amount,
-            'QRIS',
-            qrisTransaction.referenceNo,
-            'pending',
-            qrisTransaction.qrCodeUrl,
-            expiresAt,
-            new Date().toISOString()
-        ]
-    );
-
-    res.json({
-        success: true,
-        data: {
-            paymentId,
-            ...qrisTransaction,
-            expiresAt
+            return res.status(200).json({
+                success: true,
+                data: result.rows[0]
+            });
+        } catch (error) {
+            console.error('Error fetching payment:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Gagal mengambil data pembayaran',
+                error: error.message
+            });
         }
-    });
-}));
-
-// Create Virtual Account payment
-router.post('/va/create', requireAuth, validateRequest({
-    orderId: 'required|string',
-    amount: 'required|number|positive',
-    bank: 'required|string|in:BCA,BNI,MANDIRI,OVO'
-}), asyncHandler(async (req, res) => {
-    const { orderId, amount, bank } = req.body;
-    const tenantId = req.user.tenantId;
-
-    // Check order exists
-    const orderResult = await db.execute(
-        'SELECT * FROM orders WHERE id = ? AND tenant_id = ?',
-        [orderId, tenantId]
-    );
-
-    if (!orderResult.rows?.[0]) {
-        return res.status(404).json({
-            success: false,
-            message: 'Pesanan tidak ditemukan'
-        });
     }
 
-    const order = orderResult.rows[0];
+    async getPaymentsByOrder(req, res) {
+        try {
+            const { orderId } = req.params;
+            const branchId = req.user.branchId;
+            const page = parseInt(req.query.page) || 1;
+            const limit = parseInt(req.query.limit) || 10;
+            const offset = (page - 1) * limit;
 
-    // Create VA transaction
-    const vaTransaction = await paymentService.createVirtualAccountTransaction(
-        order.order_number,
-        amount,
-        bank
-    );
+            const result = await db.query(
+                `SELECT * FROM payments 
+                 WHERE order_id = ? AND branch_id = ?
+                 ORDER BY payment_date DESC
+                 LIMIT ? OFFSET ?`,
+                [orderId, branchId, limit, offset]
+            );
 
-    const paymentId = `PAY-${Date.now()}`;
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+            const countResult = await db.query(
+                `SELECT COUNT(*) as total FROM payments 
+                 WHERE order_id = ? AND branch_id = ?`,
+                [orderId, branchId]
+            );
 
-    await db.execute(
-        `INSERT INTO payments (
-            payment_id, tenant_id, order_id, customer_name, amount, 
-            payment_method, va_number, status, bank, expires_at, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-            paymentId,
-            tenantId,
-            orderId,
-            order.customer_name,
-            amount,
-            'Virtual Account',
-            vaTransaction.vaNumber,
-            'pending',
-            bank,
-            expiresAt,
-            new Date().toISOString()
-        ]
-    );
+            const total = countResult.rows[0]?.total || 0;
 
-    res.json({
-        success: true,
-        data: {
-            paymentId,
-            ...vaTransaction,
-            expiresAt
+            return res.status(200).json({
+                success: true,
+                data: result.rows || [],
+                pagination: {
+                    page,
+                    limit,
+                    total,
+                    totalPages: Math.ceil(total / limit)
+                }
+            });
+        } catch (error) {
+            console.error('Error fetching payments by order:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Gagal mengambil data pembayaran',
+                error: error.message
+            });
         }
-    });
-}));
-
-// Process payment (simulate webhook)
-router.post('/process', requireAuth, validateRequest({
-    paymentId: 'required|string',
-    status: 'required|string|in:completed,failed,cancelled'
-}), asyncHandler(async (req, res) => {
-    const { paymentId, status } = req.body;
-    const tenantId = req.user.tenantId;
-
-    // Get payment
-    const paymentResult = await db.execute(
-        'SELECT * FROM payments WHERE payment_id = ? AND tenant_id = ?',
-        [paymentId, tenantId]
-    );
-
-    const payment = paymentResult.rows?.[0];
-
-    if (!payment) {
-        return res.status(404).json({
-            success: false,
-            message: 'Pembayaran tidak ditemukan'
-        });
     }
 
-    // Update payment status
-    await db.execute(
-        'UPDATE payments SET status = ?, updated_at = ? WHERE payment_id = ? AND tenant_id = ?',
-        [status, new Date().toISOString(), paymentId, tenantId]
-    );
+    async getAllPayments(req, res) {
+        try {
+            const branchId = req.user.branchId;
+            const page = parseInt(req.query.page) || 1;
+            const limit = parseInt(req.query.limit) || 20;
+            const offset = (page - 1) * limit;
+            const status = req.query.status || null;
+            const paymentMethod = req.query.paymentMethod || null;
+            const startDate = req.query.startDate || null;
+            const endDate = req.query.endDate || null;
 
-    // Update order payment status if completed
-    if (status === 'completed') {
-        await db.execute(
-            'UPDATE orders SET payment_status = ?, updated_at = ? WHERE id = ? AND tenant_id = ?',
-            ['paid', new Date().toISOString(), payment.order_id, tenantId]
-        );
-    }
+            let query = `SELECT p.*, o.customer_name, o.order_id, o.total_price 
+                         FROM payments p
+                         LEFT JOIN orders o ON p.order_id = o.order_id
+                         WHERE p.branch_id = ?`;
+            const params = [branchId];
 
-    res.json({
-        success: true,
-        message: `Pembayaran ${status}`,
-        data: {
-            paymentId,
-            status,
-            updatedAt: new Date().toISOString()
+            if (status) {
+                query += ` AND p.status = ?`;
+                params.push(status);
+            }
+
+            if (paymentMethod) {
+                query += ` AND p.payment_method = ?`;
+                params.push(paymentMethod);
+            }
+
+            if (startDate && endDate) {
+                query += ` AND p.payment_date BETWEEN ? AND ?`;
+                params.push(startDate, endDate);
+            }
+
+            query += ` ORDER BY p.payment_date DESC LIMIT ? OFFSET ?`;
+            params.push(limit, offset);
+
+            const result = await db.query(query, params);
+
+            let countQuery = `SELECT COUNT(*) as total FROM payments WHERE branch_id = ?`;
+            const countParams = [branchId];
+
+            if (status) {
+                countQuery += ` AND status = ?`;
+                countParams.push(status);
+            }
+
+            if (paymentMethod) {
+                countQuery += ` AND payment_method = ?`;
+                countParams.push(paymentMethod);
+            }
+
+            if (startDate && endDate) {
+                countQuery += ` AND payment_date BETWEEN ? AND ?`;
+                countParams.push(startDate, endDate);
+            }
+
+            const countResult = await db.query(countQuery, countParams);
+            const total = countResult.rows[0]?.total || 0;
+
+            return res.status(200).json({
+                success: true,
+                data: result.rows || [],
+                pagination: {
+                    page,
+                    limit,
+                    total,
+                    totalPages: Math.ceil(total / limit)
+                }
+            });
+        } catch (error) {
+            console.error('Error fetching all payments:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Gagal mengambil data pembayaran',
+                error: error.message
+            });
         }
-    });
-}));
-
-// Get payment summary by date range
-router.get('/summary/range', requireAuth, requireRole('admin', 'manager'), 
-    asyncHandler(async (req, res) => {
-    const { startDate, endDate } = req.query;
-    const tenantId = req.user.tenantId;
-
-    if (!startDate || !endDate) {
-        return res.status(400).json({
-            success: false,
-            message: 'startDate dan endDate diperlukan'
-        });
     }
 
-    const result = await db.execute(
-        `SELECT 
-            payment_method,
-            status,
-            COUNT(*) as total_transactions,
-            SUM(amount) as total_amount,
-            AVG(amount) as avg_amount
-         FROM payments 
-         WHERE tenant_id = ? 
-         AND payment_date BETWEEN ? AND ?
-         GROUP BY payment_method, status
-         ORDER BY total_amount DESC`,
-        [tenantId, startDate, endDate]
-    );
+    async updatePaymentStatus(req, res) {
+        try {
+            const { paymentId } = req.params;
+            const { status, referenceId } = req.body;
+            const branchId = req.user.branchId;
 
-    const summary = result.rows || [];
+            const validStatuses = ['pending', 'completed', 'failed', 'refunded', 'cancelled'];
+            if (!validStatuses.includes(status)) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Status pembayaran tidak valid'
+                });
+            }
 
-    const totals = summary.reduce((acc, item) => {
-        acc.totalTransactions += item.total_transactions;
-        acc.totalAmount += item.total_amount || 0;
-        return acc;
-    }, { totalTransactions: 0, totalAmount: 0 });
+            const payment = await db.query(
+                'SELECT * FROM payments WHERE payment_id = ? AND branch_id = ?',
+                [paymentId, branchId]
+            );
 
-    res.json({
-        success: true,
-        data: {
-            summary,
-            totals,
-            period: { startDate, endDate }
+            if (!payment.rows || payment.rows.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Pembayaran tidak ditemukan'
+                });
+            }
+
+            const paymentData = payment.rows[0];
+
+            await db.execute(
+                `UPDATE payments 
+                 SET status = ?, reference_id = ?, updated_at = ?
+                 WHERE payment_id = ?`,
+                [status, referenceId || paymentData.reference_id, new Date().toISOString(), paymentId]
+            );
+
+            if (status === 'completed') {
+                await db.execute(
+                    'UPDATE orders SET status = ? WHERE order_id = ?',
+                    ['payment_completed', paymentData.order_id]
+                );
+            } else if (status === 'failed' || status === 'refunded') {
+                await db.execute(
+                    'UPDATE orders SET status = ? WHERE order_id = ?',
+                    ['payment_failed', paymentData.order_id]
+                );
+            }
+
+            return res.status(200).json({
+                success: true,
+                message: 'Status pembayaran berhasil diperbarui'
+            });
+        } catch (error) {
+            console.error('Error updating payment status:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Gagal memperbarui status pembayaran',
+                error: error.message
+            });
         }
-    });
-}));
-
-// Verify webhook signature
-router.post('/webhook/verify', asyncHandler(async (req, res) => {
-    const signature = req.headers['x-payment-signature'];
-    const payload = req.body;
-
-    const isValid = paymentService.verifyWebhookSignature(payload, signature);
-
-    if (!isValid) {
-        return res.status(401).json({
-            success: false,
-            message: 'Signature tidak valid'
-        });
     }
 
-    res.json({
-        success: true,
-        message: 'Signature valid'
-    });
-}));
+    async verifyPaymentWebhook(req, res) {
+        try {
+            const signature = req.headers['x-webhook-signature'];
+            const payload = req.body;
 
-// Get payment methods available
-router.get('/methods/available', requireAuth, asyncHandler(async (req, res) => {
-    const methods = [
-        {
-            code: 'QRIS',
-            name: 'QRIS (QR Code)',
-            description: 'Pembayaran via QR Code untuk semua dompet digital',
-            icon: 'qrcode',
-            minAmount: 10000,
-            maxAmount: 500000000,
-            processingTime: '5-10 menit'
-        },
-        {
-            code: 'VA_BCA',
-            name: 'Transfer BCA Virtual Account',
-            description: 'Transfer ke nomor virtual account BCA',
-            icon: 'bank',
-            minAmount: 10000,
-            maxAmount: 500000000,
-            processingTime: '5-30 menit'
-        },
-        {
-            code: 'VA_BNI',
-            name: 'Transfer BNI Virtual Account',
-            description: 'Transfer ke nomor virtual account BNI',
-            icon: 'bank',
-            minAmount: 10000,
-            maxAmount: 500000000,
-            processingTime: '5-30 menit'
-        },
-        {
-            code: 'VA_MANDIRI',
-            name: 'Transfer MANDIRI Virtual Account',
-            description: 'Transfer ke nomor virtual account MANDIRI',
-            icon: 'bank',
-            minAmount: 10000,
-            maxAmount: 500000000,
-            processingTime: '5-30 menit'
-        },
-        {
-            code: 'CASH',
-            name: 'Bayar di Tempat',
-            description: 'Pembayaran langsung di lokasi cabang',
-            icon: 'cash',
-            minAmount: 0,
-            maxAmount: null,
-            processingTime: 'Instant'
+            const isValid = paymentService.verifyWebhookSignature(payload, signature);
+
+            if (!isValid) {
+                return res.status(401).json({
+                    success: false,
+                    message: 'Signature tidak valid'
+                });
+            }
+
+            const { orderId, status, referenceNo } = payload;
+
+            const payment = await db.query(
+                'SELECT * FROM payments WHERE order_id = ?',
+                [orderId]
+            );
+
+            if (!payment.rows || payment.rows.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Pembayaran tidak ditemukan'
+                });
+            }
+
+            const paymentData = payment.rows[0];
+
+            await db.execute(
+                `UPDATE payments 
+                 SET status = ?, reference_id = ?, updated_at = ?
+                 WHERE payment_id = ?`,
+                [status, referenceNo, new Date().toISOString(), paymentData.payment_id]
+            );
+
+            if (status === 'completed') {
+                await db.execute(
+                    'UPDATE orders SET status = ? WHERE order_id = ?',
+                    ['payment_completed', orderId]
+                );
+            }
+
+            return res.status(200).json({
+                success: true,
+                message: 'Webhook berhasil diproses'
+            });
+        } catch (error) {
+            console.error('Error processing webhook:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Gagal memproses webhook',
+                error: error.message
+            });
         }
-    ];
+    }
 
-    res.json({
-        success: true,
-        data: methods
-    });
-}));
+    async refundPayment(req, res) {
+        try {
+            const { paymentId } = req.params;
+            const { reason } = req.body;
+            const branchId = req.user.branchId;
 
-module.exports = router;
+            const payment = await db.query(
+                'SELECT * FROM payments WHERE payment_id = ? AND branch_id = ?',
+                [paymentId, branchId]
+            );
+
+            if (!payment.rows || payment.rows.length === 0) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Pembayaran tidak ditemukan'
+                });
+            }
+
+            const paymentData = payment.rows[0];
+
+            if (paymentData.status !== 'completed') {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Hanya pembayaran yang sudah selesai yang dapat dikembalikan'
+                });
+            }
+
+            await db.execute(
+                `UPDATE payments 
+                 SET status = ?, refund_reason = ?, refund_date = ?, updated_at = ?
+                 WHERE payment_id = ?`,
+                ['refunded', reason || '', new Date().toISOString().split('T')[0], new Date().toISOString(), paymentId]
+            );
+
+            await db.execute(
+                'UPDATE orders SET status = ? WHERE order_id = ?',
+                ['refunded', paymentData.order_id]
+            );
+
+            return res.status(200).json({
+                success: true,
+                message: 'Pembayaran berhasil dikembalikan'
+            });
+        } catch (error) {
+            console.error('Error refunding payment:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Gagal mengembalikan pembayaran',
+                error: error.message
+            });
+        }
+    }
+
+    async getPaymentStatistics(req, res) {
+        try {
+            const branchId = req.user.branchId;
+            const startDate = req.query.startDate || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            const endDate = req.query.endDate || new Date().toISOString().split('T')[0];
+
+            const totalRevenue = await db.query(
+                `SELECT SUM(amount) as total FROM payments 
+                 WHERE branch_id = ? AND status = 'completed' 
+                 AND payment_date BETWEEN ? AND ?`,
+                [branchId, startDate, endDate]
+            );
+
+            const paymentMethodStats = await db.query(
+                `SELECT payment_method, COUNT(*) as count, SUM(amount) as total 
+                 FROM payments 
+                 WHERE branch_id = ? AND status = 'completed'
+                 AND payment_date BETWEEN ? AND ?
+                 GROUP BY payment_method`,
+                [branchId, startDate, endDate]
+            );
+
+            const dailyRevenue = await db.query(
+                `SELECT payment_date, SUM(amount) as total, COUNT(*) as count
+                 FROM payments 
+                 WHERE branch_id = ? AND status = 'completed'
+                 AND payment_date BETWEEN ? AND ?
+                 GROUP BY payment_date
+                 ORDER BY payment_date ASC`,
+                [branchId, startDate, endDate]
+            );
+
+            const failedPayments = await db.query(
+                `SELECT COUNT(*) as total, SUM(amount) as totalAmount 
+                 FROM payments 
+                 WHERE branch_id = ? AND status IN ('failed', 'cancelled')
+                 AND payment_date BETWEEN ? AND ?`,
+                [branchId, startDate, endDate]
+            );
+
+            return res.status(200).json({
+                success: true,
+                data: {
+                    totalRevenue: totalRevenue.rows[0]?.total || 0,
+                    paymentMethods: paymentMethodStats.rows || [],
+                    dailyRevenue: dailyRevenue.rows || [],
+                    failedPayments: failedPayments.rows[0] || { total: 0, totalAmount: 0 },
+                    period: {
+                        startDate,
+                        endDate
+                    }
+                }
+            });
+        } catch (error) {
+            console.error('Error fetching payment statistics:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Gagal mengambil statistik pembayaran',
+                error: error.message
+            });
+        }
+    }
+}
+
+module.exports = new PaymentController();
