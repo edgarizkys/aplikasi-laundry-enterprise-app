@@ -1,889 +1,942 @@
-I'll generate comprehensive unit tests for the Laundry Enterprise application. Let me start with the first chunk.
+I'll generate comprehensive unit tests for the Laundry Enterprise application. Let me create the test file in chunks.
 <function_calls>
 <invoke name="write_to_file">
-<parameter name="file_path">unit.test.js</parameter>
+<parameter name="path">unit.test.js</parameter>
 <parameter name="content">const request = require('supertest');
-const app = require('./app');
-const db = require('./db');
+const { describe, it, expect, beforeEach, afterEach, jest } = require('@jest/globals');
+const app = require('../src/app');
+const { db } = require('../src/database');
 
 // Mock database
-jest.mock('./db');
+jest.mock('../src/database', () => ({
+  db: {
+    execute: jest.fn(),
+    query: jest.fn(),
+  }
+}));
 
-describe('Aplikasi Laundry Enterprise - Unit Tests', () => {
+describe('Laundry Enterprise API Tests', () => {
+  
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  // ==================== ORDERS TESTS ====================
-  describe('Orders API', () => {
-    describe('GET /api/orders', () => {
-      test('should return all orders with pagination', async () => {
-        const mockOrders = [
-          {
-            id: 1,
-            order_number: 'ORD-2026-001',
-            customer_name: 'Budi Santoso',
-            phone: '081234567890',
-            email: 'budi@email.com',
-            items_list: '5 Baju, 3 Celana',
-            total_weight_kg: 4.5,
-            service_type: 'Express',
-            total_price: 67500,
-            status: 'processing',
-            pickup_date: '2026-07-28',
-            delivery_date: '2026-07-29',
-            assigned_staff: 'Siti Nurhaliza',
-            notes: 'Express service'
-          }
-        ];
+  afterEach(() => {
+    jest.resetAllMocks();
+  });
 
-        db.prepare.mockReturnValue({
-          all: jest.fn().mockReturnValue(mockOrders)
-        });
+  // ============================================
+  // ORDER MANAGEMENT TESTS
+  // ============================================
+  
+  describe('Order Management', () => {
+    
+    describe('POST /api/orders - Create Order', () => {
+      it('should create a new order with valid data', async () => {
+        const orderData = {
+          order_number: 'ORD-003',
+          customer_id: 'CUST-001',
+          customer_name: 'Budi Santoso',
+          phone: '081234567890',
+          items_count: 12,
+          weight_kg: 4.5,
+          service_type: 'Regular',
+          total_price: 67500,
+          status: 'pending',
+          pickup_date: '2026-07-28',
+          delivery_date: '2026-07-30',
+          assigned_staff: 'Ahmad',
+          notes: 'Jangan pemutihan'
+        };
 
-        const res = await request(app).get('/api/orders?page=1&limit=10');
+        db.execute.mockResolvedValueOnce({ lastID: 3 });
 
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(Array.isArray(res.body.data)).toBe(true);
+        const response = await request(app)
+          .post('/api/orders')
+          .send(orderData)
+          .expect(201);
+
+        expect(response.body).toHaveProperty('id');
+        expect(response.body.order_number).toBe('ORD-003');
+        expect(response.body.status).toBe('pending');
+        expect(db.execute).toHaveBeenCalled();
       });
 
-      test('should handle pagination parameters correctly', async () => {
-        db.prepare.mockReturnValue({
-          all: jest.fn().mockReturnValue([])
-        });
+      it('should return 400 when required fields are missing', async () => {
+        const incompleteOrder = {
+          order_number: 'ORD-003',
+          customer_id: 'CUST-001'
+        };
 
-        const res = await request(app).get('/api/orders?page=2&limit=20');
+        const response = await request(app)
+          .post('/api/orders')
+          .send(incompleteOrder)
+          .expect(400);
 
-        expect(res.status).toBe(200);
-        expect(res.body.pagination.page).toBe(2);
-        expect(res.body.pagination.limit).toBe(20);
+        expect(response.body).toHaveProperty('error');
+        expect(response.body.error).toContain('required');
       });
 
-      test('should filter orders by status', async () => {
-        const mockOrders = [
-          {
-            id: 1,
-            order_number: 'ORD-2026-001',
-            status: 'processing'
-          }
-        ];
+      it('should validate weight_kg is a positive number', async () => {
+        const orderData = {
+          order_number: 'ORD-003',
+          customer_id: 'CUST-001',
+          customer_name: 'Budi Santoso',
+          phone: '081234567890',
+          items_count: 12,
+          weight_kg: -5,
+          service_type: 'Regular',
+          total_price: 67500,
+          status: 'pending',
+          pickup_date: '2026-07-28',
+          delivery_date: '2026-07-30',
+          assigned_staff: 'Ahmad',
+          notes: ''
+        };
 
-        db.prepare.mockReturnValue({
-          all: jest.fn().mockReturnValue(mockOrders)
-        });
+        const response = await request(app)
+          .post('/api/orders')
+          .send(orderData)
+          .expect(400);
 
-        const res = await request(app).get('/api/orders?status=processing');
-
-        expect(res.status).toBe(200);
-        expect(res.body.data[0].status).toBe('processing');
+        expect(response.body).toHaveProperty('error');
       });
 
-      test('should handle invalid pagination gracefully', async () => {
-        const res = await request(app).get('/api/orders?page=-1&limit=abc');
+      it('should validate total_price is a positive number', async () => {
+        const orderData = {
+          order_number: 'ORD-003',
+          customer_id: 'CUST-001',
+          customer_name: 'Budi Santoso',
+          phone: '081234567890',
+          items_count: 12,
+          weight_kg: 4.5,
+          service_type: 'Regular',
+          total_price: -1000,
+          status: 'pending',
+          pickup_date: '2026-07-28',
+          delivery_date: '2026-07-30',
+          assigned_staff: 'Ahmad',
+          notes: ''
+        };
 
-        expect(res.status).toBe(400);
-        expect(res.body.success).toBe(false);
+        const response = await request(app)
+          .post('/api/orders')
+          .send(orderData)
+          .expect(400);
+
+        expect(response.body).toHaveProperty('error');
       });
     });
 
-    describe('GET /api/orders/:id', () => {
-      test('should return a single order by ID', async () => {
+    describe('GET /api/orders - List Orders', () => {
+      it('should return paginated list of orders', async () => {
+        const mockOrders = [
+          {
+            id: 1,
+            order_number: 'ORD-001',
+            customer_name: 'Budi Santoso',
+            status: 'processing',
+            total_price: 82500
+          },
+          {
+            id: 2,
+            order_number: 'ORD-002',
+            customer_name: 'Siti Nurhaliza',
+            status: 'completed',
+            total_price: 64000
+          }
+        ];
+
+        db.query.mockResolvedValueOnce(mockOrders);
+
+        const response = await request(app)
+          .get('/api/orders?page=1&limit=10')
+          .expect(200);
+
+        expect(Array.isArray(response.body.data)).toBe(true);
+        expect(response.body.data.length).toBe(2);
+        expect(response.body).toHaveProperty('pagination');
+      });
+
+      it('should filter orders by status', async () => {
+        const mockOrders = [
+          {
+            id: 1,
+            order_number: 'ORD-001',
+            customer_name: 'Budi Santoso',
+            status: 'processing',
+            total_price: 82500
+          }
+        ];
+
+        db.query.mockResolvedValueOnce(mockOrders);
+
+        const response = await request(app)
+          .get('/api/orders?status=processing')
+          .expect(200);
+
+        expect(response.body.data[0].status).toBe('processing');
+      });
+
+      it('should filter orders by customer_id', async () => {
+        const mockOrders = [
+          {
+            id: 1,
+            order_number: 'ORD-001',
+            customer_id: 'CUST-001',
+            customer_name: 'Budi Santoso',
+            status: 'processing',
+            total_price: 82500
+          }
+        ];
+
+        db.query.mockResolvedValueOnce(mockOrders);
+
+        const response = await request(app)
+          .get('/api/orders?customer_id=CUST-001')
+          .expect(200);
+
+        expect(response.body.data[0].customer_id).toBe('CUST-001');
+      });
+
+      it('should return empty array when no orders match filter', async () => {
+        db.query.mockResolvedValueOnce([]);
+
+        const response = await request(app)
+          .get('/api/orders?status=nonexistent')
+          .expect(200);
+
+        expect(response.body.data).toEqual([]);
+      });
+    });
+
+    describe('GET /api/orders/:id - Get Single Order', () => {
+      it('should return a single order by id', async () => {
         const mockOrder = {
           id: 1,
-          order_number: 'ORD-2026-001',
+          order_number: 'ORD-001',
+          customer_id: 'CUST-001',
           customer_name: 'Budi Santoso',
-          total_price: 67500,
-          status: 'processing'
+          phone: '081234567890',
+          items_count: 15,
+          weight_kg: 5.5,
+          service_type: 'Regular',
+          total_price: 82500,
+          status: 'processing',
+          pickup_date: '2026-07-28',
+          delivery_date: '2026-07-30',
+          assigned_staff: 'Ahmad',
+          notes: 'Hindari pemutihan'
         };
 
-        db.prepare.mockReturnValue({
-          get: jest.fn().mockReturnValue(mockOrder)
-        });
+        db.query.mockResolvedValueOnce([mockOrder]);
 
-        const res = await request(app).get('/api/orders/1');
+        const response = await request(app)
+          .get('/api/orders/1')
+          .expect(200);
 
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(res.body.data.order_number).toBe('ORD-2026-001');
+        expect(response.body.id).toBe(1);
+        expect(response.body.order_number).toBe('ORD-001');
       });
 
-      test('should return 404 if order not found', async () => {
-        db.prepare.mockReturnValue({
-          get: jest.fn().mockReturnValue(null)
-        });
+      it('should return 404 when order not found', async () => {
+        db.query.mockResolvedValueOnce([]);
 
-        const res = await request(app).get('/api/orders/999');
+        const response = await request(app)
+          .get('/api/orders/9999')
+          .expect(404);
 
-        expect(res.status).toBe(404);
-        expect(res.body.success).toBe(false);
-        expect(res.body.error).toContain('tidak ditemukan');
-      });
-
-      test('should validate order ID format', async () => {
-        const res = await request(app).get('/api/orders/invalid-id');
-
-        expect(res.status).toBe(400);
-        expect(res.body.success).toBe(false);
+        expect(response.body).toHaveProperty('error');
       });
     });
 
-    describe('POST /api/orders', () => {
-      test('should create a new order successfully', async () => {
-        const newOrder = {
-          order_number: 'ORD-2026-003',
-          customer_name: 'Ahmad Wijaya',
-          phone: '081234567890',
-          email: 'ahmad@email.com',
-          items_list: '5 Baju',
-          total_weight_kg: 3.0,
-          service_type: 'Regular',
-          total_price: 45000,
-          status: 'pending',
-          pickup_date: '2026-07-28',
-          delivery_date: '2026-07-30'
-        };
-
-        db.prepare.mockReturnValue({
-          run: jest.fn().mockReturnValue({ lastInsertRowid: 1 })
-        });
-
-        const res = await request(app)
-          .post('/api/orders')
-          .send(newOrder);
-
-        expect(res.status).toBe(201);
-        expect(res.body.success).toBe(true);
-        expect(res.body.data.id).toBe(1);
-      });
-
-      test('should validate required fields', async () => {
-        const incompleteOrder = {
-          customer_name: 'Ahmad Wijaya'
-        };
-
-        const res = await request(app)
-          .post('/api/orders')
-          .send(incompleteOrder);
-
-        expect(res.status).toBe(400);
-        expect(res.body.success).toBe(false);
-        expect(res.body.errors).toBeDefined();
-      });
-
-      test('should validate email format', async () => {
-        const invalidOrder = {
-          order_number: 'ORD-2026-003',
-          customer_name: 'Ahmad Wijaya',
-          phone: '081234567890',
-          email: 'invalid-email',
-          items_list: '5 Baju',
-          total_weight_kg: 3.0,
-          service_type: 'Regular',
-          total_price: 45000,
-          status: 'pending',
-          pickup_date: '2026-07-28',
-          delivery_date: '2026-07-30'
-        };
-
-        const res = await request(app)
-          .post('/api/orders')
-          .send(invalidOrder);
-
-        expect(res.status).toBe(400);
-        expect(res.body.success).toBe(false);
-      });
-
-      test('should validate phone number format', async () => {
-        const invalidOrder = {
-          order_number: 'ORD-2026-003',
-          customer_name: 'Ahmad Wijaya',
-          phone: 'invalid-phone',
-          email: 'ahmad@email.com',
-          items_list: '5 Baju',
-          total_weight_kg: 3.0,
-          service_type: 'Regular',
-          total_price: 45000,
-          status: 'pending',
-          pickup_date: '2026-07-28',
-          delivery_date: '2026-07-30'
-        };
-
-        const res = await request(app)
-          .post('/api/orders')
-          .send(invalidOrder);
-
-        expect(res.status).toBe(400);
-        expect(res.body.success).toBe(false);
-      });
-
-      test('should generate unique order number', async () => {
-        const newOrder = {
-          customer_name: 'Ahmad Wijaya',
-          phone: '081234567890',
-          email: 'ahmad@email.com',
-          items_list: '5 Baju',
-          total_weight_kg: 3.0,
-          service_type: 'Regular',
-          total_price: 45000,
-          status: 'pending',
-          pickup_date: '2026-07-28',
-          delivery_date: '2026-07-30'
-        };
-
-        db.prepare.mockReturnValue({
-          run: jest.fn().mockReturnValue({ lastInsertRowid: 1 })
-        });
-
-        const res = await request(app)
-          .post('/api/orders')
-          .send(newOrder);
-
-        expect(res.status).toBe(201);
-        expect(res.body.data.order_number).toMatch(/^ORD-2026-\d+$/);
-      });
-    });
-
-    describe('PUT /api/orders/:id', () => {
-      test('should update an order successfully', async () => {
+    describe('PUT /api/orders/:id - Update Order', () => {
+      it('should update an existing order', async () => {
         const updateData = {
           status: 'completed',
           delivery_date: '2026-07-29'
         };
 
-        db.prepare.mockReturnValue({
-          run: jest.fn().mockReturnValue({ changes: 1 }),
-          get: jest.fn().mockReturnValue({ id: 1, ...updateData })
-        });
+        db.query.mockResolvedValueOnce([{ id: 1 }]);
+        db.execute.mockResolvedValueOnce({ changes: 1 });
 
-        const res = await request(app)
+        const response = await request(app)
           .put('/api/orders/1')
-          .send(updateData);
+          .send(updateData)
+          .expect(200);
 
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(res.body.data.status).toBe('completed');
+        expect(response.body).toHaveProperty('message');
+        expect(db.execute).toHaveBeenCalled();
       });
 
-      test('should validate status values', async () => {
-        const invalidUpdate = {
-          status: 'invalid-status'
+      it('should not allow invalid status values', async () => {
+        const updateData = {
+          status: 'invalid_status'
         };
 
-        const res = await request(app)
+        const response = await request(app)
           .put('/api/orders/1')
-          .send(invalidUpdate);
+          .send(updateData)
+          .expect(400);
 
-        expect(res.status).toBe(400);
-        expect(res.body.success).toBe(false);
+        expect(response.body).toHaveProperty('error');
       });
 
-      test('should return 404 if order not found', async () => {
-        db.prepare.mockReturnValue({
-          run: jest.fn().mockReturnValue({ changes: 0 })
-        });
+      it('should return 404 when updating non-existent order', async () => {
+        db.query.mockResolvedValueOnce([]);
 
-        const res = await request(app)
-          .put('/api/orders/999')
-          .send({ status: 'completed' });
+        const response = await request(app)
+          .put('/api/orders/9999')
+          .send({ status: 'completed' })
+          .expect(404);
 
-        expect(res.status).toBe(404);
-        expect(res.body.success).toBe(false);
-      });
-
-      test('should allow partial updates', async () => {
-        const partialUpdate = {
-          notes: 'Updated notes'
-        };
-
-        db.prepare.mockReturnValue({
-          run: jest.fn().mockReturnValue({ changes: 1 }),
-          get: jest.fn().mockReturnValue({ id: 1, ...partialUpdate })
-        });
-
-        const res = await request(app)
-          .put('/api/orders/1')
-          .send(partialUpdate);
-
-        expect(res.status).toBe(200);
-        expect(res.body.data.notes).toBe('Updated notes');
+        expect(response.body).toHaveProperty('error');
       });
     });
 
-    describe('DELETE /api/orders/:id', () => {
-      test('should delete an order successfully', async () => {
-        db.prepare.mockReturnValue({
-          run: jest.fn().mockReturnValue({ changes: 1 })
-        });
+    describe('DELETE /api/orders/:id - Delete Order', () => {
+      it('should delete an order', async () => {
+        db.query.mockResolvedValueOnce([{ id: 1 }]);
+        db.execute.mockResolvedValueOnce({ changes: 1 });
 
-        const res = await request(app).delete('/api/orders/1');
+        const response = await request(app)
+          .delete('/api/orders/1')
+          .expect(200);
 
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(res.body.message).toContain('dihapus');
+        expect(response.body).toHaveProperty('message');
+        expect(db.execute).toHaveBeenCalled();
       });
 
-      test('should return 404 if order not found', async () => {
-        db.prepare.mockReturnValue({
-          run: jest.fn().mockReturnValue({ changes: 0 })
-        });
+      it('should return 404 when deleting non-existent order', async () => {
+        db.query.mockResolvedValueOnce([]);
 
-        const res = await request(app).delete('/api/orders/999');
+        const response = await request(app)
+          .delete('/api/orders/9999')
+          .expect(404);
 
-        expect(res.status).toBe(404);
-        expect(res.body.success).toBe(false);
-      });
-
-      test('should handle deletion errors gracefully', async () => {
-        db.prepare.mockImplementation(() => {
-          throw new Error('Database error');
-        });
-
-        const res = await request(app).delete('/api/orders/1');
-
-        expect(res.status).toBe(500);
-        expect(res.body.success).toBe(false);
-      });
-    });
-
-    describe('Order Status Transitions', () => {
-      test('should allow valid status transitions', async () => {
-        const transitions = [
-          { from: 'pending', to: 'processing' },
-          { from: 'processing', to: 'completed' },
-          { from: 'pending', to: 'cancelled' }
-        ];
-
-        for (const transition of transitions) {
-          db.prepare.mockReturnValue({
-            run: jest.fn().mockReturnValue({ changes: 1 }),
-            get: jest.fn().mockReturnValue({ id: 1, status: transition.to })
-          });
-
-          const res = await request(app)
-            .put('/api/orders/1')
-            .send({ status: transition.to });
-
-          expect([200, 201]).toContain(res.status);
-        }
+        expect(response.body).toHaveProperty('error');
       });
     });
   });
 
-  // ==================== CUSTOMERS TESTS ====================
-  describe('Customers API', () => {
-    describe('GET /api/customers', () => {
-      test('should return all customers with pagination', async () => {
+  // ============================================
+  // CUSTOMER MANAGEMENT TESTS
+  // ============================================
+  
+  describe('Customer Management', () => {
+    
+    describe('POST /api/customers - Create Customer', () => {
+      it('should create a new customer with valid data', async () => {
+        const customerData = {
+          customer_id: 'CUST-003',
+          name: 'Ahmad Suryanto',
+          phone: '083456789012',
+          email: 'ahmad.suryanto@email.com',
+          address: 'Jl. Ahmad Yani No. 15',
+          loyalty_points: 0,
+          total_spent: 0,
+          member_tier: 'Bronze',
+          joined_date: '2026-07-28'
+        };
+
+        db.execute.mockResolvedValueOnce({ lastID: 3 });
+
+        const response = await request(app)
+          .post('/api/customers')
+          .send(customerData)
+          .expect(201);
+
+        expect(response.body).toHaveProperty('id');
+        expect(response.body.name).toBe('Ahmad Suryanto');
+        expect(response.body.member_tier).toBe('Bronze');
+      });
+
+      it('should validate email format', async () => {
+        const customerData = {
+          customer_id: 'CUST-003',
+          name: 'Ahmad Suryanto',
+          phone: '083456789012',
+          email: 'invalid-email',
+          address: 'Jl. Ahmad Yani No. 15',
+          loyalty_points: 0,
+          total_spent: 0,
+          member_tier: 'Bronze',
+          joined_date: '2026-07-28'
+        };
+
+        const response = await request(app)
+          .post('/api/customers')
+          .send(customerData)
+          .expect(400);
+
+        expect(response.body).toHaveProperty('error');
+      });
+
+      it('should validate phone number format', async () => {
+        const customerData = {
+          customer_id: 'CUST-003',
+          name: 'Ahmad Suryanto',
+          phone: '12345',
+          email: 'ahmad@email.com',
+          address: 'Jl. Ahmad Yani No. 15',
+          loyalty_points: 0,
+          total_spent: 0,
+          member_tier: 'Bronze',
+          joined_date: '2026-07-28'
+        };
+
+        const response = await request(app)
+          .post('/api/customers')
+          .send(customerData)
+          .expect(400);
+
+        expect(response.body).toHaveProperty('error');
+      });
+    });
+
+    describe('GET /api/customers - List Customers', () => {
+      it('should return paginated list of customers', async () => {
         const mockCustomers = [
           {
             id: 1,
             customer_id: 'CUST-001',
             name: 'Budi Santoso',
             phone: '081234567890',
-            email: 'budi@email.com',
-            address: 'Jl. Merdeka No. 10',
-            city: 'Jakarta Pusat',
-            loyalty_points: 250,
-            total_spent: 675000,
-            registration_date: '2025-12-01'
+            member_tier: 'Gold',
+            loyalty_points: 450
+          },
+          {
+            id: 2,
+            customer_id: 'CUST-002',
+            name: 'Siti Nurhaliza',
+            phone: '082345678901',
+            member_tier: 'Silver',
+            loyalty_points: 220
           }
         ];
 
-        db.prepare.mockReturnValue({
-          all: jest.fn().mockReturnValue(mockCustomers)
-        });
+        db.query.mockResolvedValueOnce(mockCustomers);
 
-        const res = await request(app).get('/api/customers?page=1&limit=10');
+        const response = await request(app)
+          .get('/api/customers?page=1&limit=10')
+          .expect(200);
 
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(Array.isArray(res.body.data)).toBe(true);
+        expect(Array.isArray(response.body.data)).toBe(true);
+        expect(response.body.data.length).toBe(2);
       });
 
-      test('should search customers by name', async () => {
+      it('should filter customers by member tier', async () => {
         const mockCustomers = [
           {
             id: 1,
+            customer_id: 'CUST-001',
             name: 'Budi Santoso',
-            customer_id: 'CUST-001'
+            member_tier: 'Gold',
+            loyalty_points: 450
           }
         ];
 
-        db.prepare.mockReturnValue({
-          all: jest.fn().mockReturnValue(mockCustomers)
-        });
+        db.query.mockResolvedValueOnce(mockCustomers);
 
-        const res = await request(app).get('/api/customers?search=Budi');
+        const response = await request(app)
+          .get('/api/customers?member_tier=Gold')
+          .expect(200);
 
-        expect(res.status).toBe(200);
-        expect(res.body.data[0].name).toContain('Budi');
+        expect(response.body.data[0].member_tier).toBe('Gold');
       });
 
-      test('should filter customers by city', async () => {
+      it('should search customers by name', async () => {
         const mockCustomers = [
           {
             id: 1,
+            customer_id: 'CUST-001',
             name: 'Budi Santoso',
-            city: 'Jakarta Pusat'
+            member_tier: 'Gold'
           }
         ];
 
-        db.prepare.mockReturnValue({
-          all: jest.fn().mockReturnValue(mockCustomers)
-        });
+        db.query.mockResolvedValueOnce(mockCustomers);
 
-        const res = await request(app).get('/api/customers?city=Jakarta%20Pusat');
+        const response = await request(app)
+          .get('/api/customers?search=Budi')
+          .expect(200);
 
-        expect(res.status).toBe(200);
-        expect(res.body.data[0].city).toBe('Jakarta Pusat');
+        expect(response.body.data[0].name).toContain('Budi');
       });
     });
 
-    describe('POST /api/customers', () => {
-      test('should create a new customer successfully', async () => {
-        const newCustomer = {
-          name: 'Ahmad Wijaya',
-          phone: '081234567890',
-          email: 'ahmad@email.com',
-          address: 'Jl. Sudirman No. 15',
-          city: 'Jakarta Selatan'
-        };
-
-        db.prepare.mockReturnValue({
-          run: jest.fn().mockReturnValue({ lastInsertRowid: 1 })
-        });
-
-        const res = await request(app)
-          .post('/api/customers')
-          .send(newCustomer);
-
-        expect(res.status).toBe(201);
-        expect(res.body.success).toBe(true);
-        expect(res.body.data.customer_id).toMatch(/^CUST-\d+$/);
-        expect(res.body.data.loyalty_points).toBe(0);
-      });
-
-      test('should validate customer email uniqueness', async () => {
-        const newCustomer = {
-          name: 'Ahmad Wijaya',
-          phone: '081234567890',
-          email: 'existing@email.com',
-          address: 'Jl. Sudirman No. 15',
-          city: 'Jakarta Selatan'
-        };
-
-        db.prepare.mockReturnValue({
-          get: jest.fn().mockReturnValue({ id: 1, email: 'existing@email.com' })
-        });
-
-        const res = await request(app)
-          .post('/api/customers')
-          .send(newCustomer);
-
-        expect(res.status).toBe(409);
-        expect(res.body.success).toBe(false);
-        expect(res.body.error).toContain('Email sudah terdaftar');
-      });
-
-      test('should initialize loyalty points to 0', async () => {
-        const newCustomer = {
-          name: 'Ahmad Wijaya',
-          phone: '081234567890',
-          email: 'ahmad@email.com',
-          address: 'Jl. Sudirman No. 15',
-          city: 'Jakarta Selatan'
-        };
-
-        db.prepare.mockReturnValue({
-          run: jest.fn().mockReturnValue({ lastInsertRowid: 1 })
-        });
-
-        const res = await request(app)
-          .post('/api/customers')
-          .send(newCustomer);
-
-        expect(res.body.data.loyalty_points).toBe(0);
-        expect(res.body.data.total_spent).toBe(0);
-      });
-    });
-
-    describe('PUT /api/customers/:id', () => {
-      test('should update customer loyalty points', async () => {
+    describe('PUT /api/customers/:id - Update Customer', () => {
+      it('should update customer loyalty points', async () => {
         const updateData = {
           loyalty_points: 500
         };
 
-        db.prepare.mockReturnValue({
-          run: jest.fn().mockReturnValue({ changes: 1 }),
-          get: jest.fn().mockReturnValue({ id: 1, loyalty_points: 500 })
-        });
+        db.query.mockResolvedValueOnce([{ id: 1 }]);
+        db.execute.mockResolvedValueOnce({ changes: 1 });
 
-        const res = await request(app)
+        const response = await request(app)
           .put('/api/customers/1')
-          .send(updateData);
+          .send(updateData)
+          .expect(200);
 
-        expect(res.status).toBe(200);
-        expect(res.body.data.loyalty_points).toBe(500);
+        expect(response.body).toHaveProperty('message');
       });
 
-      test('should update total spent', async () => {
+      it('should update customer tier based on total spent', async () => {
         const updateData = {
-          total_spent: 1000000
+          total_spent: 5000000
         };
 
-        db.prepare.mockReturnValue({
-          run: jest.fn().mockReturnValue({ changes: 1 }),
-          get: jest.fn().mockReturnValue({ id: 1, total_spent: 1000000 })
-        });
+        db.query.mockResolvedValueOnce([{ id: 1 }]);
+        db.execute.mockResolvedValueOnce({ changes: 1 });
 
-        const res = await request(app)
+        const response = await request(app)
           .put('/api/customers/1')
-          .send(updateData);
+          .send(updateData)
+          .expect(200);
 
-        expect(res.status).toBe(200);
-        expect(res.body.data.total_spent).toBe(1000000);
-      });
-    });
-
-    describe('Loyalty Program', () => {
-      test('should calculate points based on spending', () => {
-        const spending = 100000;
-        const expectedPoints = Math.floor(spending / 1000);
-
-        expect(expectedPoints).toBe(100);
+        expect(response.body).toHaveProperty('message');
       });
 
-      test('should prevent negative loyalty points', async () => {
+      it('should not allow negative loyalty points', async () => {
         const updateData = {
           loyalty_points: -100
         };
 
-        const res = await request(app)
+        const response = await request(app)
           .put('/api/customers/1')
-          .send(updateData);
+          .send(updateData)
+          .expect(400);
 
-        expect(res.status).toBe(400);
-        expect(res.body.success).toBe(false);
+        expect(response.body).toHaveProperty('error');
+      });
+    });
+
+    describe('DELETE /api/customers/:id - Delete Customer', () => {
+      it('should delete a customer', async () => {
+        db.query.mockResolvedValueOnce([{ id: 1 }]);
+        db.execute.mockResolvedValueOnce({ changes: 1 });
+
+        const response = await request(app)
+          .delete('/api/customers/1')
+          .expect(200);
+
+        expect(response.body).toHaveProperty('message');
+      });
+    });
+  });
+
+  // ============================================
+  // STAFF MANAGEMENT TESTS
+  // ============================================
+  
+  describe('Staff Management', () => {
+    
+    describe('POST /api/staff - Create Staff', () => {
+      it('should create a new staff member', async () => {
+        const staffData = {
+          staff_id: 'STF-003',
+          name: 'Rudi Hermawan',
+          position: 'Courier',
+          phone: '085456789012',
+          email: 'rudi@laundry.com',
+          salary: 3200000,
+          hire_date: '2026-01-15',
+          status: 'active'
+        };
+
+        db.execute.mockResolvedValueOnce({ lastID: 3 });
+
+        const response = await request(app)
+          .post('/api/staff')
+          .send(staffData)
+          .expect(201);
+
+        expect(response.body).toHaveProperty('id');
+        expect(response.body.name).toBe('Rudi Hermawan');
+        expect(response.body.status).toBe('active');
+      });
+
+      it('should validate salary is positive', async () => {
+        const staffData = {
+          staff_id: 'STF-003',
+          name: 'Rudi Hermawan',
+          position: 'Courier',
+          phone: '085456789012',
+          email: 'rudi@laundry.com',
+          salary: -1000000,
+          hire_date: '2026-01-15',
+          status: 'active'
+        };
+
+        const response = await request(app)
+          .post('/api/staff')
+          .send(staffData)
+          .expect(400);
+
+        expect(response.body).toHaveProperty('error');
+      });
+
+      it('should validate position field', async () => {
+        const staffData = {
+          staff_id: 'STF-003',
+          name: 'Rudi Hermawan',
+          position: '',
+          phone: '085456789012',
+          email: 'rudi@laundry.com',
+          salary: 3200000,
+          hire_date: '2026-01-15',
+          status: 'active'
+        };
+
+        const response = await request(app)
+          .post('/api/staff')
+          .send(staffData)
+          .expect(400);
+
+        expect(response.body).toHaveProperty('error');
+      });
+    });
+
+    describe('GET /api/staff - List Staff', () => {
+      it('should return list of active staff', async () => {
+        const mockStaff = [
+          {
+            id: 1,
+            staff_id: 'STF-001',
+            name: 'Ahmad Wijaya',
+            position: 'Operator',
+            status: 'active',
+            salary: 3500000
+          },
+          {
+            id: 2,
+            staff_id: 'STF-002',
+            name: 'Dewi Lestari',
+            position: 'Quality Control',
+            status: 'active',
+            salary: 3750000
+          }
+        ];
+
+        db.query.mockResolvedValueOnce(mockStaff);
+
+        const response = await request(app)
+          .get('/api/staff?status=active')
+          .expect(200);
+
+        expect(response.body.data.length).toBe(2);
+        expect(response.body.data[0].status).toBe('active');
+      });
+
+      it('should filter staff by position', async () => {
+        const mockStaff = [
+          {
+            id: 1,
+            staff_id: 'STF-001',
+            name: 'Ahmad Wijaya',
+            position: 'Operator',
+            status: 'active'
+          }
+        ];
+
+        db.query.mockResolvedValueOnce(mockStaff);
+
+        const response = await request(app)
+          .get('/api/staff?position=Operator')
+          .expect(200);
+
+        expect(response.body.data[0].position).toBe('Operator');
+      });
+    });
+
+    describe('PUT /api/staff/:id - Update Staff', () => {
+      it('should update staff salary', async () => {
+        const updateData = {
+          salary: 4000000
+        };
+
+        db.query.mockResolvedValueOnce([{ id: 1 }]);
+        db.execute.mockResolvedValueOnce({ changes: 1 });
+
+        const response = await request(app)
+          .put('/api/staff/1')
+          .send(updateData)
+          .expect(200);
+
+        expect(response.body).toHaveProperty('message');
+      });
+
+      it('should update staff status', async () => {
+        const updateData = {
+          status: 'inactive'
+        };
+
+        db.query.mockResolvedValueOnce([{ id: 1 }]);
+        db.execute.mockResolvedValueOnce({ changes: 1 });
+
+        const response = await request(app)
+          .put('/api/staff/1')
+          .send(updateData)
+          .expect(200);
+
+        expect(response.body).toHaveProperty('message');
+      });
+    });
+
+    describe('DELETE /api/staff/:id - Delete Staff', () => {
+      it('should delete a staff member', async () => {
+        db.query.mockResolvedValueOnce([{ id: 1 }]);
+        db.execute.mockResolvedValueOnce({ changes: 1 });
+
+        const response = await request(app)
+          .delete('/api/staff/1')
+          .expect(200);
+
+        expect(response.body).toHaveProperty('message');
       });
     });
   });
 });
 </parameter>
-</invoke>
-</function_calls>
-</invoke>
-
-Now appending the second chunk with Staff, Machines, and Payments tests:
-<function_calls>
-<invoke name="write_to_file">
-<parameter name="file_path">unit.test.js</parameter>
+</invoke name="write_to_file">
+<parameter name="path">unit.test.js</parameter>
+<parameter name="append">true</parameter>
 <parameter name="content">
+  // ============================================
+  // SERVICE MANAGEMENT TESTS
+  // ============================================
+  
+  describe('Service Management', () => {
+    
+    describe('POST /api/services - Create Service', () => {
+      it('should create a new service', async () => {
+        const serviceData = {
+          service_id: 'SVC-003',
+          name: 'Premium Wash',
+          price_per_kg: 25000,
+          turnaround_days: 1,
+          description: 'Cuci premium dengan kondisioner khusus',
+          active: true
+        };
 
-  // ==================== STAFF TESTS ====================
-  describe('Staff API', () => {
-    describe('GET /api/staff', () => {
-      test('should return all staff members with pagination', async () => {
-        const mockStaff = [
-          {
-            id: 1,
-            staff_id: 'STAFF-001',
-            name: 'Siti Nurhaliza',
-            role: 'Operator',
-            phone: '085123456789',
-            email: 'siti@laundry.com',
-            shift: 'Pagi (08:00-16:00)',
-            salary: 3500000,
-            join_date: '2024-06-01',
-            status: 'aktif'
-          }
-        ];
+        db.execute.mockResolvedValueOnce({ lastID: 3 });
 
-        db.prepare.mockReturnValue({
-          all: jest.fn().mockReturnValue(mockStaff)
-        });
+        const response = await request(app)
+          .post('/api/services')
+          .send(serviceData)
+          .expect(201);
 
-        const res = await request(app).get('/api/staff?page=1&limit=10');
-
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(Array.isArray(res.body.data)).toBe(true);
+        expect(response.body).toHaveProperty('id');
+        expect(response.body.name).toBe('Premium Wash');
+        expect(response.body.price_per_kg).toBe(25000);
       });
 
-      test('should filter staff by status', async () => {
-        const mockStaff = [
-          {
-            id: 1,
-            staff_id: 'STAFF-001',
-            name: 'Siti Nurhaliza',
-            status: 'aktif'
-          }
-        ];
+      it('should validate price_per_kg is positive', async () => {
+        const serviceData = {
+          service_id: 'SVC-003',
+          name: 'Premium Wash',
+          price_per_kg: -5000,
+          turnaround_days: 1,
+          description: 'Cuci premium',
+          active: true
+        };
 
-        db.prepare.mockReturnValue({
-          all: jest.fn().mockReturnValue(mockStaff)
-        });
+        const response = await request(app)
+          .post('/api/services')
+          .send(serviceData)
+          .expect(400);
 
-        const res = await request(app).get('/api/staff?status=aktif');
-
-        expect(res.status).toBe(200);
-        expect(res.body.data[0].status).toBe('aktif');
+        expect(response.body).toHaveProperty('error');
       });
 
-      test('should filter staff by role', async () => {
-        const mockStaff = [
-          {
-            id: 1,
-            staff_id: 'STAFF-001',
-            name: 'Roni Hermawan',
-            role: 'Supervisor'
-          }
-        ];
+      it('should validate turnaround_days is positive', async () => {
+        const serviceData = {
+          service_id: 'SVC-003',
+          name: 'Premium Wash',
+          price_per_kg: 25000,
+          turnaround_days: 0,
+          description: 'Cuci premium',
+          active: true
+        };
 
-        db.prepare.mockReturnValue({
-          all: jest.fn().mockReturnValue(mockStaff)
-        });
+        const response = await request(app)
+          .post('/api/services')
+          .send(serviceData)
+          .expect(400);
 
-        const res = await request(app).get('/api/staff?role=Supervisor');
-
-        expect(res.status).toBe(200);
-        expect(res.body.data[0].role).toBe('Supervisor');
-      });
-
-      test('should filter staff by shift', async () => {
-        const mockStaff = [
-          {
-            id: 1,
-            shift: 'Pagi (08:00-16:00)'
-          }
-        ];
-
-        db.prepare.mockReturnValue({
-          all: jest.fn().mockReturnValue(mockStaff)
-        });
-
-        const res = await request(app).get('/api/staff?shift=Pagi');
-
-        expect(res.status).toBe(200);
-        expect(res.body.data[0].shift).toContain('Pagi');
+        expect(response.body).toHaveProperty('error');
       });
     });
 
-    describe('POST /api/staff', () => {
-      test('should create a new staff member successfully', async () => {
-        const newStaff = {
-          name: 'Budi Santoso',
-          role: 'Operator',
-          phone: '085987654321',
-          email: 'budi@laundry.com',
-          shift: 'Siang (16:00-00:00)',
-          salary: 3500000
-        };
+    describe('GET /api/services - List Services', () => {
+      it('should return all active services', async () => {
+        const mockServices = [
+          {
+            id: 1,
+            service_id: 'SVC-001',
+            name: 'Regular Wash',
+            price_per_kg: 15000,
+            turnaround_days: 2,
+            active: true
+          },
+          {
+            id: 2,
+            service_id: 'SVC-002',
+            name: 'Express',
+            price_per_kg: 20000,
+            turnaround_days: 1,
+            active: true
+          }
+        ];
 
-        db.prepare.mockReturnValue({
-          run: jest.fn().mockReturnValue({ lastInsertRowid: 1 })
-        });
+        db.query.mockResolvedValueOnce(mockServices);
 
-        const res = await request(app)
-          .post('/api/staff')
-          .send(newStaff);
+        const response = await request(app)
+          .get('/api/services?active=true')
+          .expect(200);
 
-        expect(res.status).toBe(201);
-        expect(res.body.success).toBe(true);
-        expect(res.body.data.staff_id).toMatch(/^STAFF-\d+$/);
-        expect(res.body.data.status).toBe('aktif');
+        expect(response.body.data.length).toBe(2);
+        expect(response.body.data[0].active).toBe(true);
       });
 
-      test('should validate required staff fields', async () => {
-        const incompleteStaff = {
-          name: 'Budi Santoso',
-          role: 'Operator'
-        };
+      it('should return all services including inactive', async () => {
+        const mockServices = [
+          {
+            id: 1,
+            service_id: 'SVC-001',
+            name: 'Regular Wash',
+            active: true
+          },
+          {
+            id: 3,
+            service_id: 'SVC-003',
+            name: 'Old Service',
+            active: false
+          }
+        ];
 
-        const res = await request(app)
-          .post('/api/staff')
-          .send(incompleteStaff);
+        db.query.mockResolvedValueOnce(mockServices);
 
-        expect(res.status).toBe(400);
-        expect(res.body.success).toBe(false);
-        expect(res.body.errors).toBeDefined();
-      });
+        const response = await request(app)
+          .get('/api/services')
+          .expect(200);
 
-      test('should validate salary is positive', async () => {
-        const invalidStaff = {
-          name: 'Budi Santoso',
-          role: 'Operator',
-          phone: '085987654321',
-          email: 'budi@laundry.com',
-          shift: 'Siang (16:00-00:00)',
-          salary: -1000000
-        };
-
-        const res = await request(app)
-          .post('/api/staff')
-          .send(invalidStaff);
-
-        expect(res.status).toBe(400);
-        expect(res.body.success).toBe(false);
-      });
-
-      test('should validate valid role values', async () => {
-        const validRoles = ['Operator', 'Supervisor', 'Manager'];
-        const invalidStaff = {
-          name: 'Budi Santoso',
-          role: 'InvalidRole',
-          phone: '085987654321',
-          email: 'budi@laundry.com',
-          shift: 'Siang (16:00-00:00)',
-          salary: 3500000
-        };
-
-        const res = await request(app)
-          .post('/api/staff')
-          .send(invalidStaff);
-
-        expect(res.status).toBe(400);
-        expect(res.body.success).toBe(false);
+        expect(response.body.data.length).toBe(2);
       });
     });
 
-    describe('PUT /api/staff/:id', () => {
-      test('should update staff member status', async () => {
+    describe('PUT /api/services/:id - Update Service', () => {
+      it('should update service price', async () => {
         const updateData = {
-          status: 'nonaktif'
+          price_per_kg: 18000
         };
 
-        db.prepare.mockReturnValue({
-          run: jest.fn().mockReturnValue({ changes: 1 }),
-          get: jest.fn().mockReturnValue({ id: 1, status: 'nonaktif' })
-        });
+        db.query.mockResolvedValueOnce([{ id: 1 }]);
+        db.execute.mockResolvedValueOnce({ changes: 1 });
 
-        const res = await request(app)
-          .put('/api/staff/1')
-          .send(updateData);
+        const response = await request(app)
+          .put('/api/services/1')
+          .send(updateData)
+          .expect(200);
 
-        expect(res.status).toBe(200);
-        expect(res.body.data.status).toBe('nonaktif');
+        expect(response.body).toHaveProperty('message');
       });
 
-      test('should update staff salary', async () => {
+      it('should deactivate a service', async () => {
         const updateData = {
-          salary: 4000000
+          active: false
         };
 
-        db.prepare.mockReturnValue({
-          run: jest.fn().mockReturnValue({ changes: 1 }),
-          get: jest.fn().mockReturnValue({ id: 1, salary: 4000000 })
-        });
+        db.query.mockResolvedValueOnce([{ id: 1 }]);
+        db.execute.mockResolvedValueOnce({ changes: 1 });
 
-        const res = await request(app)
-          .put('/api/staff/1')
-          .send(updateData);
+        const response = await request(app)
+          .put('/api/services/1')
+          .send(updateData)
+          .expect(200);
 
-        expect(res.status).toBe(200);
-        expect(res.body.data.salary).toBe(4000000);
-      });
-
-      test('should update staff shift', async () => {
-        const updateData = {
-          shift: 'Malam (00:00-08:00)'
-        };
-
-        db.prepare.mockReturnValue({
-          run: jest.fn().mockReturnValue({ changes: 1 }),
-          get: jest.fn().mockReturnValue({ id: 1, shift: 'Malam (00:00-08:00)' })
-        });
-
-        const res = await request(app)
-          .put('/api/staff/1')
-          .send(updateData);
-
-        expect(res.status).toBe(200);
-        expect(res.body.data.shift).toBe('Malam (00:00-08:00)');
+        expect(response.body).toHaveProperty('message');
       });
     });
 
-    describe('DELETE /api/staff/:id', () => {
-      test('should deactivate staff member (soft delete)', async () => {
-        db.prepare.mockReturnValue({
-          run: jest.fn().mockReturnValue({ changes: 1 })
-        });
+    describe('DELETE /api/services/:id - Delete Service', () => {
+      it('should delete a service', async () => {
+        db.query.mockResolvedValueOnce([{ id: 1 }]);
+        db.execute.mockResolvedValueOnce({ changes: 1 });
 
-        const res = await request(app).delete('/api/staff/1');
+        const response = await request(app)
+          .delete('/api/services/1')
+          .expect(200);
 
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-      });
-    });
-
-    describe('Staff Performance Metrics', () => {
-      test('should calculate staff workload', async () => {
-        const mockStaffOrders = [
-          { id: 1 },
-          { id: 2 },
-          { id: 3 }
-        ];
-
-        db.prepare.mockReturnValue({
-          all: jest.fn().mockReturnValue(mockStaffOrders)
-        });
-
-        const res = await request(app).get('/api/staff/1/performance');
-
-        expect(res.status).toBe(200);
+        expect(response.body).toHaveProperty('message');
       });
     });
   });
 
-  // ==================== MACHINES TESTS ====================
-  describe('Machines API', () => {
-    describe('GET /api/machines', () => {
-      test('should return all machines with pagination', async () => {
-        const mockMachines = [
-          {
-            id: 1,
-            machine_id: 'MACH-001',
-            name: 'Mesin Cuci Industrial 1',
-            type: 'Washing Machine',
-            capacity_kg: 25,
-            location: 'Area Utama',
-            status: 'aktif',
-            last_maintenance: '2026-07-15',
-            next_maintenance: '2026-08-15'
-          }
-        ];
+  // ============================================
+  // PAYMENT MANAGEMENT TESTS
+  // ============================================
+  
+  describe('Payment Management', () => {
+    
+    describe('POST /api/payments - Create Payment', () => {
+      it('should create a payment for an order', async () => {
+        const paymentData = {
+          payment_id: 'PAY-003',
+          order_id: 'ORD-003',
+          amount: 67500,
+          payment_method: 'QRIS',
+          status: 'pending',
+          paid_date: '2026-07-28',
+          reference: 'QRIS20260728003'
+        };
 
-        db.prepare.mockReturnValue({
-          all: jest.fn().mockReturnValue(mockMachines)
-        });
+        db.execute.mockResolvedValueOnce({ lastID: 3 });
 
-        const res = await request(app).get('/api/machines?page=1&limit=10');
+        const response = await request(app)
+          .post('/api/payments')
+          .send(paymentData)
+          .expect(201);
 
-        expect(res.status).toBe(200);
-        expect(res.body.success).toBe(true);
-        expect(Array.isArray(res.body.data)).toBe(true);
+        expect(response.body).toHaveProperty('id');
+        expect(response.body.payment_method).toBe('QRIS');
+        expect(response.body.status).toBe('pending');
       });
 
-      test('should filter machines by status', async () => {
-        const mockMachines = [
-          {
-            id: 1,
-            machine_id: 'MACH-001',
-            status: 'aktif'
-          }
-        ];
+      it('should validate amount is positive', async () => {
+        const paymentData = {
+          payment_id: 'PAY-003',
+          order_id: 'ORD-003',
+          amount: -67500,
+          payment_method: 'QRIS',
+          status: 'pending',
+          paid_date: '2026-07-28',
+          reference: 'QRIS20260728003'
+        };
 
-        db.prepare.mockReturnValue({
-          all: jest.fn().mockReturnValue(mockMachines)
-        });
+        const response = await request(app)
+          .post('/api/payments')
+          .send(paymentData)
+          .expect(400);
 
-        const res = await request(app).get('/api/machines?status=aktif');
-
-        expect(res.status).toBe(200);
-        expect(res.body.data[0].status).toBe('aktif');
+        expect(response.body).toHaveProperty('error');
       });
 
-      test('should filter machines by type', async () => {
-        const mockMachines = [
-          {
-            id: 1,
-            machine_id: '
+      it('should validate payment_method', async () => {
+        const paymentData = {
+          payment_id: 'PAY-003',
+          order_id: 'ORD-003',
+          amount: 67500,
+          payment_method: 'InvalidMethod',
+          status: 'pending',
+          paid_date: '2026-07-28',
+          reference: 'QRIS20260728003'
+        };
+
+        const response = await request(app)
+          .post('/api/payments')
+          .send(paymentData)
+          .expect(400);
+
+        expect(response.body).to
