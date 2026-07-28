@@ -1,645 +1,603 @@
-// api/api.js - API Client for Laundry Enterprise Application
-
+// api.js - API Client for Laundry Enterprise Application
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
-// Helper function for API requests
-const apiRequest = async (endpoint, options = {}) => {
-    const {
-        method = 'GET',
-        body = null,
-        headers = {},
-        params = {}
-    } = options;
+// Utility function to get headers with tenant ID
+const getHeaders = (tenantId = 'default_tenant') => ({
+    'Content-Type': 'application/json',
+    'x-tenant-id': tenantId
+});
 
-    try {
-        let url = `${API_BASE_URL}${endpoint}`;
-        
-        // Add query parameters
-        if (Object.keys(params).length > 0) {
-            const queryString = new URLSearchParams(params).toString();
-            url = `${url}?${queryString}`;
-        }
-
-        const requestOptions = {
-            method,
-            headers: {
-                'Content-Type': 'application/json',
-                'x-tenant-id': localStorage.getItem('tenantId') || 'default_tenant',
-                ...headers
-            }
-        };
-
-        if (body) {
-            requestOptions.body = JSON.stringify(body);
-        }
-
-        const response = await fetch(url, requestOptions);
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.message || `HTTP Error: ${response.status}`);
-        }
-
-        return await response.json();
-    } catch (error) {
-        console.error('API Request Error:', error);
-        throw error;
+// Utility function to handle API responses
+const handleResponse = async (response) => {
+    if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'API request failed');
     }
+    return response.json();
 };
 
-// ==================== ORDERS API ====================
-
-export const ordersAPI = {
+// ============ ORDERS API ============
+export const ordersApi = {
     // Get all orders with pagination
-    getAll: (page = 1, limit = 20, filters = {}) => {
-        const params = { page, limit, ...filters };
-        return apiRequest('/orders', { params });
+    getAll: async (page = 1, limit = 20, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/orders?page=${page}&limit=${limit}`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
     },
 
     // Get single order by ID
-    getById: (orderId) => {
-        return apiRequest(`/orders/${orderId}`);
+    getById: async (orderId, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/orders/${orderId}`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
     },
 
     // Create new order
-    create: (orderData) => {
-        return apiRequest('/orders', {
-            method: 'POST',
-            body: orderData
-        });
+    create: async (data, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/orders`,
+            {
+                method: 'POST',
+                headers: getHeaders(tenantId),
+                body: JSON.stringify(data)
+            }
+        );
+        return handleResponse(response);
     },
 
     // Update order
-    update: (orderId, orderData) => {
-        return apiRequest(`/orders/${orderId}`, {
-            method: 'PUT',
-            body: orderData
-        });
+    update: async (orderId, data, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/orders/${orderId}`,
+            {
+                method: 'PUT',
+                headers: getHeaders(tenantId),
+                body: JSON.stringify(data)
+            }
+        );
+        return handleResponse(response);
     },
 
     // Delete order
-    delete: (orderId) => {
-        return apiRequest(`/orders/${orderId}`, {
-            method: 'DELETE'
-        });
-    },
-
-    // Search orders
-    search: (searchTerm) => {
-        return apiRequest('/orders/search', {
-            params: { q: searchTerm }
-        });
+    delete: async (orderId, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/orders/${orderId}`,
+            {
+                method: 'DELETE',
+                headers: getHeaders(tenantId)
+            }
+        );
+        return handleResponse(response);
     },
 
     // Get orders by status
-    getByStatus: (status, page = 1, limit = 20) => {
-        return apiRequest('/orders/status/' + status, {
-            params: { page, limit }
-        });
+    getByStatus: async (status, page = 1, limit = 20, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/orders/status/${status}?page=${page}&limit=${limit}`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
+    },
+
+    // Get orders by customer
+    getByCustomer: async (customerId, page = 1, limit = 20, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/orders/customer/${customerId}?page=${page}&limit=${limit}`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
+    },
+
+    // Get orders by branch
+    getByBranch: async (branchId, page = 1, limit = 20, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/orders/branch/${branchId}?page=${page}&limit=${limit}`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
     },
 
     // Update order status
-    updateStatus: (orderId, status) => {
-        return apiRequest(`/orders/${orderId}/status`, {
-            method: 'PUT',
-            body: { status }
-        });
-    },
-
-    // Update payment status
-    updatePaymentStatus: (orderId, paymentStatus) => {
-        return apiRequest(`/orders/${orderId}/payment-status`, {
-            method: 'PUT',
-            body: { payment_status: paymentStatus }
-        });
-    },
-
-    // Get order by number
-    getByOrderNumber: (orderNumber) => {
-        return apiRequest(`/orders/number/${orderNumber}`);
-    },
-
-    // Assign to delivery
-    assignDelivery: (orderId, deliveryData) => {
-        return apiRequest(`/orders/${orderId}/assign-delivery`, {
-            method: 'POST',
-            body: deliveryData
-        });
+    updateStatus: async (orderId, status, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/orders/${orderId}/status`,
+            {
+                method: 'PATCH',
+                headers: getHeaders(tenantId),
+                body: JSON.stringify({ status })
+            }
+        );
+        return handleResponse(response);
     }
 };
 
-// ==================== CUSTOMERS API ====================
-
-export const customersAPI = {
+// ============ CUSTOMERS API ============
+export const customersApi = {
     // Get all customers with pagination
-    getAll: (page = 1, limit = 20) => {
-        return apiRequest('/customers', {
-            params: { page, limit }
-        });
+    getAll: async (page = 1, limit = 20, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/customers?page=${page}&limit=${limit}`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
     },
 
     // Get single customer by ID
-    getById: (customerId) => {
-        return apiRequest(`/customers/${customerId}`);
+    getById: async (customerId, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/customers/${customerId}`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
     },
 
     // Create new customer
-    create: (customerData) => {
-        return apiRequest('/customers', {
-            method: 'POST',
-            body: customerData
-        });
+    create: async (data, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/customers`,
+            {
+                method: 'POST',
+                headers: getHeaders(tenantId),
+                body: JSON.stringify(data)
+            }
+        );
+        return handleResponse(response);
     },
 
     // Update customer
-    update: (customerId, customerData) => {
-        return apiRequest(`/customers/${customerId}`, {
-            method: 'PUT',
-            body: customerData
-        });
+    update: async (customerId, data, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/customers/${customerId}`,
+            {
+                method: 'PUT',
+                headers: getHeaders(tenantId),
+                body: JSON.stringify(data)
+            }
+        );
+        return handleResponse(response);
     },
 
     // Delete customer
-    delete: (customerId) => {
-        return apiRequest(`/customers/${customerId}`, {
-            method: 'DELETE'
-        });
+    delete: async (customerId, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/customers/${customerId}`,
+            {
+                method: 'DELETE',
+                headers: getHeaders(tenantId)
+            }
+        );
+        return handleResponse(response);
     },
 
-    // Search customers
-    search: (searchTerm) => {
-        return apiRequest('/customers/search', {
-            params: { q: searchTerm }
-        });
-    },
-
-    // Get customer by phone
-    getByPhone: (phone) => {
-        return apiRequest(`/customers/phone/${phone}`);
-    },
-
-    // Get customer loyalty points
-    getLoyaltyPoints: (customerId) => {
-        return apiRequest(`/customers/${customerId}/loyalty-points`);
+    // Get customers by member type
+    getByMemberType: async (memberType, page = 1, limit = 20, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/customers/type/${memberType}?page=${page}&limit=${limit}`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
     },
 
     // Add loyalty points
-    addLoyaltyPoints: (customerId, points) => {
-        return apiRequest(`/customers/${customerId}/loyalty-points`, {
-            method: 'POST',
-            body: { points }
-        });
+    addPoints: async (customerId, points, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/customers/${customerId}/points`,
+            {
+                method: 'POST',
+                headers: getHeaders(tenantId),
+                body: JSON.stringify({ points })
+            }
+        );
+        return handleResponse(response);
     },
 
-    // Get customer orders history
-    getOrderHistory: (customerId, page = 1, limit = 10) => {
-        return apiRequest(`/customers/${customerId}/orders`, {
-            params: { page, limit }
-        });
+    // Search customers
+    search: async (query, page = 1, limit = 20, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/customers/search?q=${encodeURIComponent(query)}&page=${page}&limit=${limit}`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
     }
 };
 
-// ==================== EMPLOYEES API ====================
-
-export const employeesAPI = {
-    // Get all employees with pagination
-    getAll: (page = 1, limit = 20) => {
-        return apiRequest('/employees', {
-            params: { page, limit }
-        });
-    },
-
-    // Get single employee by ID
-    getById: (employeeId) => {
-        return apiRequest(`/employees/${employeeId}`);
-    },
-
-    // Create new employee
-    create: (employeeData) => {
-        return apiRequest('/employees', {
-            method: 'POST',
-            body: employeeData
-        });
-    },
-
-    // Update employee
-    update: (employeeId, employeeData) => {
-        return apiRequest(`/employees/${employeeId}`, {
-            method: 'PUT',
-            body: employeeData
-        });
-    },
-
-    // Delete employee
-    delete: (employeeId) => {
-        return apiRequest(`/employees/${employeeId}`, {
-            method: 'DELETE'
-        });
-    },
-
-    // Search employees
-    search: (searchTerm) => {
-        return apiRequest('/employees/search', {
-            params: { q: searchTerm }
-        });
-    },
-
-    // Get employees by position
-    getByPosition: (position, page = 1, limit = 20) => {
-        return apiRequest('/employees/position/' + position, {
-            params: { page, limit }
-        });
-    },
-
-    // Update employee status
-    updateStatus: (employeeId, status) => {
-        return apiRequest(`/employees/${employeeId}/status`, {
-            method: 'PUT',
-            body: { status }
-        });
-    },
-
-    // Get employees by branch
-    getByBranch: (branchId, page = 1, limit = 20) => {
-        return apiRequest(`/employees/branch/${branchId}`, {
-            params: { page, limit }
-        });
-    }
-};
-
-// ==================== BRANCHES API ====================
-
-export const branchesAPI = {
+// ============ BRANCHES API ============
+export const branchesApi = {
     // Get all branches
-    getAll: (page = 1, limit = 50) => {
-        return apiRequest('/branches', {
-            params: { page, limit }
-        });
+    getAll: async (page = 1, limit = 20, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/branches?page=${page}&limit=${limit}`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
     },
 
     // Get single branch by ID
-    getById: (branchId) => {
-        return apiRequest(`/branches/${branchId}`);
+    getById: async (branchId, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/branches/${branchId}`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
     },
 
     // Create new branch
-    create: (branchData) => {
-        return apiRequest('/branches', {
-            method: 'POST',
-            body: branchData
-        });
+    create: async (data, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/branches`,
+            {
+                method: 'POST',
+                headers: getHeaders(tenantId),
+                body: JSON.stringify(data)
+            }
+        );
+        return handleResponse(response);
     },
 
     // Update branch
-    update: (branchId, branchData) => {
-        return apiRequest(`/branches/${branchId}`, {
-            method: 'PUT',
-            body: branchData
-        });
+    update: async (branchId, data, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/branches/${branchId}`,
+            {
+                method: 'PUT',
+                headers: getHeaders(tenantId),
+                body: JSON.stringify(data)
+            }
+        );
+        return handleResponse(response);
     },
 
     // Delete branch
-    delete: (branchId) => {
-        return apiRequest(`/branches/${branchId}`, {
-            method: 'DELETE'
-        });
+    delete: async (branchId, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/branches/${branchId}`,
+            {
+                method: 'DELETE',
+                headers: getHeaders(tenantId)
+            }
+        );
+        return handleResponse(response);
     },
 
-    // Search branches
-    search: (searchTerm) => {
-        return apiRequest('/branches/search', {
-            params: { q: searchTerm }
-        });
+    // Get active branches only
+    getActive: async (tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/branches/status/active`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
     },
 
-    // Get branches by city
-    getByCity: (city) => {
-        return apiRequest(`/branches/city/${city}`);
-    },
-
-    // Get branch statistics
-    getStatistics: (branchId) => {
-        return apiRequest(`/branches/${branchId}/statistics`);
+    // Get branch capacity status
+    getCapacityStatus: async (branchId, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/branches/${branchId}/capacity`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
     }
 };
 
-// ==================== SERVICES API ====================
+// ============ STAFF API ============
+export const staffApi = {
+    // Get all staff with pagination
+    getAll: async (page = 1, limit = 20, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/staff?page=${page}&limit=${limit}`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
+    },
 
-export const servicesAPI = {
+    // Get single staff by ID
+    getById: async (staffId, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/staff/${staffId}`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
+    },
+
+    // Create new staff
+    create: async (data, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/staff`,
+            {
+                method: 'POST',
+                headers: getHeaders(tenantId),
+                body: JSON.stringify(data)
+            }
+        );
+        return handleResponse(response);
+    },
+
+    // Update staff
+    update: async (staffId, data, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/staff/${staffId}`,
+            {
+                method: 'PUT',
+                headers: getHeaders(tenantId),
+                body: JSON.stringify(data)
+            }
+        );
+        return handleResponse(response);
+    },
+
+    // Delete staff
+    delete: async (staffId, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/staff/${staffId}`,
+            {
+                method: 'DELETE',
+                headers: getHeaders(tenantId)
+            }
+        );
+        return handleResponse(response);
+    },
+
+    // Get staff by branch
+    getByBranch: async (branchId, page = 1, limit = 20, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/staff/branch/${branchId}?page=${page}&limit=${limit}`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
+    },
+
+    // Get staff by role
+    getByRole: async (role, page = 1, limit = 20, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/staff/role/${role}?page=${page}&limit=${limit}`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
+    },
+
+    // Get active staff
+    getActive: async (tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/staff/status/active`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
+    }
+};
+
+// ============ SERVICES API ============
+export const servicesApi = {
     // Get all services
-    getAll: (page = 1, limit = 50) => {
-        return apiRequest('/services', {
-            params: { page, limit }
-        });
+    getAll: async (page = 1, limit = 20, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/services?page=${page}&limit=${limit}`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
     },
 
     // Get single service by ID
-    getById: (serviceId) => {
-        return apiRequest(`/services/${serviceId}`);
+    getById: async (serviceId, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/services/${serviceId}`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
     },
 
     // Create new service
-    create: (serviceData) => {
-        return apiRequest('/services', {
-            method: 'POST',
-            body: serviceData
-        });
+    create: async (data, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/services`,
+            {
+                method: 'POST',
+                headers: getHeaders(tenantId),
+                body: JSON.stringify(data)
+            }
+        );
+        return handleResponse(response);
     },
 
     // Update service
-    update: (serviceId, serviceData) => {
-        return apiRequest(`/services/${serviceId}`, {
-            method: 'PUT',
-            body: serviceData
-        });
+    update: async (serviceId, data, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/services/${serviceId}`,
+            {
+                method: 'PUT',
+                headers: getHeaders(tenantId),
+                body: JSON.stringify(data)
+            }
+        );
+        return handleResponse(response);
     },
 
     // Delete service
-    delete: (serviceId) => {
-        return apiRequest(`/services/${serviceId}`, {
-            method: 'DELETE'
-        });
+    delete: async (serviceId, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/services/${serviceId}`,
+            {
+                method: 'DELETE',
+                headers: getHeaders(tenantId)
+            }
+        );
+        return handleResponse(response);
     },
 
-    // Get active services
-    getActive: () => {
-        return apiRequest('/services/status/active');
-    },
-
-    // Update service status
-    updateStatus: (serviceId, status) => {
-        return apiRequest(`/services/${serviceId}/status`, {
-            method: 'PUT',
-            body: { status }
-        });
-    },
-
-    // Calculate price
-    calculatePrice: (weightKg, serviceId) => {
-        return apiRequest('/services/calculate-price', {
-            params: { weight_kg: weightKg, service_id: serviceId }
-        });
+    // Get active services only
+    getActive: async (tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/services/status/active`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
     }
 };
 
-// ==================== PAYMENTS API ====================
-
-export const paymentsAPI = {
+// ============ PAYMENTS API ============
+export const paymentsApi = {
     // Get all payments with pagination
-    getAll: (page = 1, limit = 20) => {
-        return apiRequest('/payments', {
-            params: { page, limit }
-        });
+    getAll: async (page = 1, limit = 20, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/payments?page=${page}&limit=${limit}`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
     },
 
     // Get single payment by ID
-    getById: (paymentId) => {
-        return apiRequest(`/payments/${paymentId}`);
+    getById: async (paymentId, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/payments/${paymentId}`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
     },
 
     // Create new payment
-    create: (paymentData) => {
-        return apiRequest('/payments', {
-            method: 'POST',
-            body: paymentData
-        });
+    create: async (data, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/payments`,
+            {
+                method: 'POST',
+                headers: getHeaders(tenantId),
+                body: JSON.stringify(data)
+            }
+        );
+        return handleResponse(response);
     },
 
     // Update payment
-    update: (paymentId, paymentData) => {
-        return apiRequest(`/payments/${paymentId}`, {
-            method: 'PUT',
-            body: paymentData
-        });
+    update: async (paymentId, data, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/payments/${paymentId}`,
+            {
+                method: 'PUT',
+                headers: getHeaders(tenantId),
+                body: JSON.stringify(data)
+            }
+        );
+        return handleResponse(response);
     },
 
     // Delete payment
-    delete: (paymentId) => {
-        return apiRequest(`/payments/${paymentId}`, {
-            method: 'DELETE'
-        });
+    delete: async (paymentId, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/payments/${paymentId}`,
+            {
+                method: 'DELETE',
+                headers: getHeaders(tenantId)
+            }
+        );
+        return handleResponse(response);
+    },
+
+    // Get payments by order
+    getByOrder: async (orderId, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/payments/order/${orderId}`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
     },
 
     // Get payments by status
-    getByStatus: (status, page = 1, limit = 20) => {
-        return apiRequest(`/payments/status/${status}`, {
-            params: { page, limit }
-        });
-    },
-
-    // Get payment by order ID
-    getByOrderId: (orderId) => {
-        return apiRequest(`/payments/order/${orderId}`);
-    },
-
-    // Update payment status
-    updateStatus: (paymentId, status) => {
-        return apiRequest(`/payments/${paymentId}/status`, {
-            method: 'PUT',
-            body: { status }
-        });
+    getByStatus: async (status, page = 1, limit = 20, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/payments/status/${status}?page=${page}&limit=${limit}`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
     },
 
     // Get payments by method
-    getByMethod: (method, page = 1, limit = 20) => {
-        return apiRequest(`/payments/method/${method}`, {
-            params: { page, limit }
-        });
+    getByMethod: async (method, page = 1, limit = 20, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/payments/method/${method}?page=${page}&limit=${limit}`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
     },
 
-    // Process QRIS payment
-    processQRIS: (paymentData) => {
-        return apiRequest('/payments/qris', {
-            method: 'POST',
-            body: paymentData
-        });
-    },
-
-    // Process bank transfer
-    processBankTransfer: (paymentData) => {
-        return apiRequest('/payments/bank-transfer', {
-            method: 'POST',
-            body: paymentData
-        });
+    // Update payment status
+    updateStatus: async (paymentId, status, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/payments/${paymentId}/status`,
+            {
+                method: 'PATCH',
+                headers: getHeaders(tenantId),
+                body: JSON.stringify({ status })
+            }
+        );
+        return handleResponse(response);
     }
 };
 
-// ==================== ANALYTICS API ====================
-
-export const analyticsAPI = {
+// ============ ANALYTICS API ============
+export const analyticsApi = {
     // Get dashboard summary
-    getDashboardSummary: () => {
-        return apiRequest('/analytics/dashboard');
+    getSummary: async (tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/analytics/summary`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
     },
 
     // Get revenue report
-    getRevenueReport: (startDate, endDate) => {
-        return apiRequest('/analytics/revenue', {
-            params: { start_date: startDate, end_date: endDate }
-        });
+    getRevenueReport: async (startDate, endDate, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/analytics/revenue?start=${startDate}&end=${endDate}`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
     },
 
-    // Get orders report
-    getOrdersReport: (startDate, endDate) => {
-        return apiRequest('/analytics/orders', {
-            params: { start_date: startDate, end_date: endDate }
-        });
+    // Get branch performance metrics
+    getBranchMetrics: async (branchId, startDate, endDate, tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/analytics/branch/${branchId}?start=${startDate}&end=${endDate}`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
     },
 
-    // Get customer report
-    getCustomerReport: () => {
-        return apiRequest('/analytics/customers');
+    // Get order statistics
+    getOrderStats: async (tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/analytics/orders`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
     },
 
-    // Get branch performance
-    getBranchPerformance: (startDate, endDate) => {
-        return apiRequest('/analytics/branch-performance', {
-            params: { start_date: startDate, end_date: endDate }
-        });
-    },
-
-    // Get service statistics
-    getServiceStatistics: () => {
-        return apiRequest('/analytics/services');
+    // Get customer statistics
+    getCustomerStats: async (tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/analytics/customers`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
     },
 
     // Get payment statistics
-    getPaymentStatistics: (startDate, endDate) => {
-        return apiRequest('/analytics/payments', {
-            params: { start_date: startDate, end_date: endDate }
-        });
-    }
-};
-
-// ==================== INVOICES API ====================
-
-export const invoicesAPI = {
-    // Generate invoice
-    generate: (orderId) => {
-        return apiRequest(`/invoices/generate/${orderId}`, {
-            method: 'POST'
-        });
-    },
-
-    // Get invoice
-    getById: (invoiceId) => {
-        return apiRequest(`/invoices/${invoiceId}`);
-    },
-
-    // Download invoice PDF
-    downloadPDF: (invoiceId) => {
-        const tenantId = localStorage.getItem('tenantId') || 'default_tenant';
-        window.location.href = `${API_BASE_URL}/invoices/${invoiceId}/pdf?x-tenant-id=${tenantId}`;
-    },
-
-    // Get invoices by order
-    getByOrderId: (orderId) => {
-        return apiRequest(`/invoices/order/${orderId}`);
-    },
-
-    // Send invoice via email
-    sendEmail: (invoiceId, email) => {
-        return apiRequest(`/invoices/${invoiceId}/send-email`, {
-            method: 'POST',
-            body: { email }
-        });
-    }
-};
-
-// ==================== NOTIFICATIONS API ====================
-
-export const notificationsAPI = {
-    // Send SMS notification
-    sendSMS: (phone, message) => {
-        return apiRequest('/notifications/sms', {
-            method: 'POST',
-            body: { phone, message }
-        });
-    },
-
-    // Send order status notification
-    sendOrderStatus: (orderId, phone) => {
-        return apiRequest(`/notifications/order-status/${orderId}`, {
-            method: 'POST',
-            body: { phone }
-        });
-    },
-
-    // Send payment reminder
-    sendPaymentReminder: (orderId, phone) => {
-        return apiRequest(`/notifications/payment-reminder/${orderId}`, {
-            method: 'POST',
-            body: { phone }
-        });
-    },
-
-    // Send delivery notification
-    sendDeliveryNotification: (orderId, phone) => {
-        return apiRequest(`/notifications/delivery/${orderId}`, {
-            method: 'POST',
-            body: { phone }
-        });
-    },
-
-    // Send email notification
-    sendEmail: (email, subject, message) => {
-        return apiRequest('/notifications/email', {
-            method: 'POST',
-            body: { email, subject, message }
-        });
-    }
-};
-
-// ==================== REPORTS API ====================
-
-export const reportsAPI = {
-    // Export orders to CSV
-    exportOrders: (startDate, endDate) => {
-        const tenantId = localStorage.getItem('tenantId') || 'default_tenant';
-        window.location.href = `${API_BASE_URL}/reports/orders/csv?start_date=${startDate}&end_date=${endDate}&x-tenant-id=${tenantId}`;
-    },
-
-    // Export payments to CSV
-    exportPayments: (startDate, endDate) => {
-        const tenantId = localStorage.getItem('tenantId') || 'default_tenant';
-        window.location.href = `${API_BASE_URL}/reports/payments/csv?start_date=${startDate}&end_date=${endDate}&x-tenant-id=${tenantId}`;
-    },
-
-    // Export customers to CSV
-    exportCustomers: () => {
-        const tenantId = localStorage.getItem('tenantId') || 'default_tenant';
-        window.location.href = `${API_BASE_URL}/reports/customers/csv?x-tenant-id=${tenantId}`;
-    },
-
-    // Get revenue summary
-    getRevenueSummary: (startDate, endDate) => {
-        return apiRequest('/reports/revenue-summary', {
-            params: { start_date: startDate, end_date: endDate }
-        });
-    },
-
-    // Get top customers
-    getTopCustomers: (limit = 10) => {
-        return apiRequest('/reports/top-customers', {
-            params: { limit }
-        });
-    },
-
-    // Get pending orders
-    getPendingOrders: () => {
-        return apiRequest('/reports/pending-orders');
+    getPaymentStats: async (tenantId = 'default_tenant') => {
+        const response = await fetch(
+            `${API_BASE_URL}/analytics/payments`,
+            { headers: getHeaders(tenantId) }
+        );
+        return handleResponse(response);
     }
 };
 
 export default {
-    ordersAPI,
-    customersAPI,
-    employeesAPI,
-    branchesAPI,
-    servicesAPI,
-    paymentsAPI,
-    analyticsAPI,
-    invoicesAPI,
-    notificationsAPI,
-    reportsAPI
+    ordersApi,
+    customersApi,
+    branchesApi,
+    staffApi,
+    servicesApi,
+    paymentsApi,
+    analyticsApi
 };
