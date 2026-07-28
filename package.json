@@ -1,18 +1,44 @@
 {
-  "name": "aplikasi-laundry-enterprise-app",
-  "version": "5.0.0-worldclass",
-  "description": "Aplikasi Laundry Enterprise - Aplikasi Laundry Enterprise World-Class Enterprise",
+  "name": "aplikasi-laundry-enterprise",
+  "version": "1.0.0",
+  "description": "Aplikasi Laundry Enterprise - Platform Enterprise Laundry",
   "main": "src/app.js",
+  "type": "module",
   "scripts": {
     "start": "node src/app.js",
-    "test": "node test/unit.test.js"
+    "dev": "nodemon src/app.js",
+    "test": "node --test test/**/*.test.js",
+    "lint": "eslint src/",
+    "seed": "node scripts/seed.js"
   },
+  "keywords": [
+    "laundry",
+    "enterprise",
+    "management",
+    "orders",
+    "scheduling"
+  ],
+  "author": "Laundry Enterprise Team",
+  "license": "ISC",
   "dependencies": {
     "express": "^4.18.2",
     "cors": "^2.8.5",
-    "dotenv": "^16.3.1",
     "helmet": "^7.1.0",
+    "dotenv": "^16.3.1",
+    "@libsql/client": "^0.3.5",
     "jsonwebtoken": "^9.0.2",
-    "@libsql/client": "^0.3.5"
+    "bcryptjs": "^2.4.3",
+    "uuid": "^9.0.0",
+    "express-validator": "^7.0.0",
+    "multer": "^1.4.5-lts.1",
+    "paginationjs": "^1.0.10"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1",
+    "eslint": "^8.50.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
   }
 }
